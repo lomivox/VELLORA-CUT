@@ -16,8 +16,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
@@ -28,6 +26,7 @@ import com.vellora.cut.ui.theme.*
 fun EditorScreen(videoUri: String, onBack: () -> Unit) {
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     val context = LocalContext.current
+    var isPlaying by remember { mutableStateOf(false) }
 
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
@@ -44,9 +43,9 @@ fun EditorScreen(videoUri: String, onBack: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxSize().background(BackgroundDark)
     ) {
-        // TOP BAR — padding 12px 16px
+        // ── TOP BAR ──────────────────────────────────
         Row(
-            modifier = Modifier.fillMaxWidth().background(SurfaceDark).padding(horizontal = 16.dp, vertical = 12.dp),
+            modifier = Modifier.fillMaxWidth().background(SurfaceDark).statusBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -79,7 +78,7 @@ fun EditorScreen(videoUri: String, onBack: () -> Unit) {
             }
         }
 
-        // PREVIEW — height: 100vw (screenWidth)
+        // ── PREVIEW — height: 100vw ───────────────────
         Box(
             modifier = Modifier.fillMaxWidth().height(screenWidth).background(Color.Black)
         ) {
@@ -94,63 +93,74 @@ fun EditorScreen(videoUri: String, onBack: () -> Unit) {
             )
         }
 
-        // TIMELINE WRAP — min-height: 155dp
-        Column(
-            modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 155.dp).background(BackgroundDark)
+        // ── CONTROLS ROW (preview کے نیچے) ───────────
+        // padding: 0 8px, justify-content: space-between
+        Box(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)
         ) {
-            // Controls: Fullscreen | Play | Link+Undo+Redo
+            // Left: Fullscreen
+            Text("⛶", color = TextPrimary, fontSize = 18.sp,
+                modifier = Modifier.align(Alignment.CenterStart))
+
+            // Center: Play/Pause — absolute center
+            IconButton(
+                onClick = {
+                    if (exoPlayer.isPlaying) { exoPlayer.pause(); isPlaying = false }
+                    else { exoPlayer.play(); isPlaying = true }
+                },
+                modifier = Modifier.align(Alignment.Center)
+            ) {
+                Text(if (isPlaying) "⏸" else "▶", color = TextPrimary, fontSize = 16.sp)
+            }
+
+            // Right: Link(ON) + Undo + Redo
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                modifier = Modifier.align(Alignment.CenterEnd),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("⛶", color = TextPrimary, fontSize = 18.sp)
-                IconButton(onClick = { if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play() }) {
-                    Text("▶", color = TextPrimary, fontSize = 18.sp)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("⧉", color = TextSecondary, fontSize = 16.sp)
+                    Text("ON", color = CyanPrimary, fontSize = 8.sp, fontWeight = FontWeight.Bold)
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("⧉", color = TextSecondary, fontSize = 16.sp)
-                        Text("ON", color = CyanPrimary, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Text("↩", color = TextSecondary, fontSize = 20.sp)
-                    Text("↪", color = TextSecondary, fontSize = 20.sp)
-                }
-            }
-
-            // Time display
-            Row(
-                modifier = Modifier.fillMaxWidth().background(SurfaceVariant).padding(horizontal = 8.dp, vertical = 2.dp)
-            ) {
-                Text("00:00 / 00:00", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-            }
-
-            // Clip strip — height: 54dp
-            Box(
-                modifier = Modifier.fillMaxWidth().height(54.dp).background(SurfaceVariant).horizontalScroll(rememberScrollState()),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("── Video Clip ──", color = CyanPrimary, fontSize = 12.sp)
-            }
-
-            // Audio track — height: 42dp
-            Box(
-                modifier = Modifier.fillMaxWidth().height(42.dp).background(BackgroundDark),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                Text("  + Add audio", color = TextSecondary, fontSize = 12.sp)
-            }
-
-            // Text track — height: 42dp
-            Box(
-                modifier = Modifier.fillMaxWidth().height(42.dp).background(BackgroundDark),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                Text("  + Add text", color = TextSecondary, fontSize = 12.sp)
+                Text("↩", color = TextSecondary, fontSize = 20.sp, modifier = Modifier.padding(horizontal = 6.dp))
+                Text("↪", color = TextSecondary, fontSize = 20.sp, modifier = Modifier.padding(end = 4.dp))
             }
         }
 
-        // BOTTOM TOOLBAR — padding 11dp 20dp
+        // ── TIME DISPLAY — height: 24dp, background: #1a1a1a ──
+        Row(
+            modifier = Modifier.fillMaxWidth().height(24.dp).background(SurfaceVariant).padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("00:00 / 00:00", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+        }
+
+        // ── TIMELINE — height: 54dp ───────────────────
+        Box(
+            modifier = Modifier.fillMaxWidth().height(54.dp).background(SurfaceVariant).horizontalScroll(rememberScrollState()),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("── Video Clip ──", color = CyanPrimary, fontSize = 12.sp)
+        }
+
+        // ── AUDIO TRACK — height: 42dp ────────────────
+        Box(
+            modifier = Modifier.fillMaxWidth().height(42.dp).background(BackgroundDark),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            Text("  + Add audio", color = TextSecondary, fontSize = 12.sp)
+        }
+
+        // ── TEXT TRACK — height: 42dp ─────────────────
+        Box(
+            modifier = Modifier.fillMaxWidth().height(42.dp).background(BackgroundDark),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            Text("  + Add text", color = TextSecondary, fontSize = 12.sp)
+        }
+
+        // ── BOTTOM TOOLBAR — padding: 11dp 20dp ───────
         Row(
             modifier = Modifier.fillMaxWidth().background(SurfaceVariant).horizontalScroll(rememberScrollState()).navigationBarsPadding().padding(vertical = 11.dp),
         ) {

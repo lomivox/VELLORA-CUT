@@ -130,7 +130,7 @@ fun EditorScreen(videoUri: String, onBack: () -> Unit) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(275.dp)
+                .height(200.dp)
                 .background(BackgroundDark)
         ) {
             // Controls row: Fullscreen | Play(center) | Link+Undo+Redo

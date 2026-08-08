@@ -40,19 +40,15 @@ fun EditorScreen(videoUri: String, onBack: () -> Unit) {
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(BackgroundDark)
+        modifier = Modifier.fillMaxSize().background(BackgroundDark)
     ) {
+        // TOP BAR — padding 12px 16px
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(SurfaceDark)
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+            modifier = Modifier.fillMaxWidth().background(SurfaceDark).padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 IconButton(onClick = { exoPlayer.release(); onBack() }) {
                     Text("✕", color = TextPrimary, fontSize = 20.sp)
                 }
@@ -81,11 +77,9 @@ fun EditorScreen(videoUri: String, onBack: () -> Unit) {
             }
         }
 
+        // PREVIEW — height: 100vw (screenWidth)
         Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(screenWidth * 0.56f)
-                .background(Color.Black)
+            modifier = Modifier.fillMaxWidth().height(screenWidth).background(Color.Black)
         ) {
             AndroidView(
                 factory = {
@@ -98,7 +92,11 @@ fun EditorScreen(videoUri: String, onBack: () -> Unit) {
             )
         }
 
-        Column(modifier = Modifier.fillMaxWidth().background(BackgroundDark)) {
+        // TIMELINE WRAP — min-height: 155dp
+        Column(
+            modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 155.dp).background(BackgroundDark)
+        ) {
+            // Controls: Fullscreen | Play | Link+Undo+Redo
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -118,28 +116,47 @@ fun EditorScreen(videoUri: String, onBack: () -> Unit) {
                 }
             }
 
-            Row(modifier = Modifier.fillMaxWidth().background(SurfaceVariant).padding(horizontal = 8.dp, vertical = 2.dp)) {
+            // Time display
+            Row(
+                modifier = Modifier.fillMaxWidth().background(SurfaceVariant).padding(horizontal = 8.dp, vertical = 2.dp)
+            ) {
                 Text("00:00 / 00:00", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
             }
 
-            Box(modifier = Modifier.fillMaxWidth().height(54.dp).background(SurfaceVariant).horizontalScroll(rememberScrollState()), contentAlignment = Alignment.Center) {
+            // Clip strip — height: 54dp
+            Box(
+                modifier = Modifier.fillMaxWidth().height(54.dp).background(SurfaceVariant).horizontalScroll(rememberScrollState()),
+                contentAlignment = Alignment.Center
+            ) {
                 Text("── Video Clip ──", color = CyanPrimary, fontSize = 12.sp)
             }
 
-            Box(modifier = Modifier.fillMaxWidth().height(42.dp).background(BackgroundDark), contentAlignment = Alignment.CenterStart) {
+            // Audio track — height: 42dp
+            Box(
+                modifier = Modifier.fillMaxWidth().height(42.dp).background(BackgroundDark),
+                contentAlignment = Alignment.CenterStart
+            ) {
                 Text("  + Add audio", color = TextSecondary, fontSize = 12.sp)
             }
 
-            Box(modifier = Modifier.fillMaxWidth().height(42.dp).background(BackgroundDark), contentAlignment = Alignment.CenterStart) {
+            // Text track — height: 42dp
+            Box(
+                modifier = Modifier.fillMaxWidth().height(42.dp).background(BackgroundDark),
+                contentAlignment = Alignment.CenterStart
+            ) {
                 Text("  + Add text", color = TextSecondary, fontSize = 12.sp)
             }
         }
 
+        // BOTTOM TOOLBAR — padding 11dp 20dp
         Row(
-            modifier = Modifier.fillMaxWidth().background(SurfaceDark).horizontalScroll(rememberScrollState()).padding(vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth().background(SurfaceVariant).horizontalScroll(rememberScrollState()).padding(vertical = 11.dp),
         ) {
             listOf("✂" to "Trim","T" to "Text","♪" to "Audio","🔊" to "Volume","🎙" to "Noise","⟳" to "Speed","✨" to "Filter","↻" to "Rotate","⊞" to "Overlay","⬜" to "Ratio","▦" to "Background").forEach { (icon, label) ->
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 14.dp)) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(horizontal = 20.dp)
+                ) {
                     Text(icon, fontSize = 20.sp, color = TextPrimary)
                     Spacer(modifier = Modifier.height(3.dp))
                     Text(label, color = TextSecondary, fontSize = 10.sp)

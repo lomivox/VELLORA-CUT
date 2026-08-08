@@ -9,3 +9,5 @@
 .cxx
 *.apk
 *.so
+app/build/
+**/build/

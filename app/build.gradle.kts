@@ -18,7 +18,6 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // ---- NDK/C++ ABI target (used once native build block below is enabled) ----
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
@@ -46,21 +45,18 @@ android {
         compose = true
     }
 
-    // ==============================================================
-    // NATIVE (C++/NDK) BUILD — currently DISABLED until NDK finishes
-    // installing (see: sdkmanager --install "ndk;27.2.12479018").
-    //
-    // Once NDK is installed, uncomment the block below AND the
-    // ndkVersion line. Nothing else in this file needs to change —
-    // the cpp/ folder and CMakeLists.txt are already in place.
-    // ==============================================================
-    // ndkVersion = "27.2.12479018"
-    // externalNativeBuild {
-    //     cmake {
-    //         path = file("src/main/cpp/CMakeLists.txt")
-    //         version = "3.22.1"
-    //     }
-    // }
+    // NATIVE (C++/NDK) BUILD — only enabled when running in CI
+    // (GitHub Actions sets CI=true automatically). Local Termux
+    // builds skip this block entirely, so no local NDK is needed.
+    if (System.getenv("CI") != null) {
+        ndkVersion = "27.2.12479018"
+        externalNativeBuild {
+            cmake {
+                path = file("src/main/cpp/CMakeLists.txt")
+                version = "3.22.1"
+            }
+        }
+    }
 
     packaging {
         resources {
@@ -80,12 +76,10 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
 
-    // Room (project/timeline/keyframe persistence)
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     ksp("androidx.room:room-compiler:2.6.1")
 
-    // Media3 (preview playback — Phase 1)
     implementation("androidx.media3:media3-exoplayer:1.5.0")
     implementation("androidx.media3:media3-ui:1.5.0")
 

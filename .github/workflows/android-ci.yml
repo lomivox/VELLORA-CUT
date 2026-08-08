@@ -1,0 +1,46 @@
+name: VELLORA CUT CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK + CMake
+        run: |
+          sdkmanager --install "ndk;27.2.12479018" "cmake;3.22.1" --channel=0
+          echo "ndk.dir=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> local.properties
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build debug APK (Kotlin + native C++ engine)
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Run unit tests (Engine layer)
+        run: ./gradlew testDebugUnitTest --no-daemon
+        continue-on-error: true
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: vellora-cut-debug-apk
+          path: app/build/outputs/apk/debug/*.apk

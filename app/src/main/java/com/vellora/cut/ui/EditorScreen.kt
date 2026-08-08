@@ -1,5 +1,6 @@
 package com.vellora.cut.ui
 
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -11,20 +12,39 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import com.vellora.cut.ui.theme.*
 
 @Composable
 fun EditorScreen(videoUri: String, onBack: () -> Unit) {
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    val context = LocalContext.current
+
+    val exoPlayer = remember {
+        ExoPlayer.Builder(context).build().apply {
+            setMediaItem(MediaItem.fromUri(Uri.parse(videoUri)))
+            prepare()
+            playWhenReady = false
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { exoPlayer.release() }
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(BackgroundDark)
     ) {
+        // ── Top Bar ──────────────────────────────
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -33,7 +53,10 @@ fun EditorScreen(videoUri: String, onBack: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            TextButton(onClick = onBack) {
+            TextButton(onClick = {
+                exoPlayer.release()
+                onBack()
+            }) {
                 Text("✕", color = TextPrimary, fontSize = 18.sp)
             }
             Text(
@@ -56,24 +79,26 @@ fun EditorScreen(videoUri: String, onBack: () -> Unit) {
             }
         }
 
+        // ── Video Preview ─────────────────────────
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(screenWidth)
-                .background(Color.Black),
-            contentAlignment = Alignment.Center
+                .background(Color.Black)
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("🎬", fontSize = 48.sp)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Upload a video to start editing",
-                    color = TextSecondary,
-                    fontSize = 13.sp
-                )
-            }
+            AndroidView(
+                factory = {
+                    PlayerView(it).apply {
+                        player = exoPlayer
+                        useController = true
+                        setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
+                    }
+                },
+                modifier = Modifier.fillMaxSize()
+            )
         }
 
+        // ── Timeline ──────────────────────────────
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -98,7 +123,7 @@ fun EditorScreen(videoUri: String, onBack: () -> Unit) {
                     .background(SurfaceVariant),
                 contentAlignment = Alignment.Center
             ) {
-                Text("+ Add video clip", color = TextSecondary, fontSize = 12.sp)
+                Text("── Video Clip ──", color = CyanPrimary, fontSize = 12.sp)
             }
 
             Row(
@@ -112,7 +137,9 @@ fun EditorScreen(videoUri: String, onBack: () -> Unit) {
                         onClick = { },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = TextSecondary
+                        ),
                         contentPadding = PaddingValues(vertical = 8.dp)
                     ) {
                         Text(btn, fontSize = 11.sp)
@@ -121,6 +148,7 @@ fun EditorScreen(videoUri: String, onBack: () -> Unit) {
             }
         }
 
+        // ── Bottom Toolbar ────────────────────────
         Row(
             modifier = Modifier
                 .fillMaxWidth()

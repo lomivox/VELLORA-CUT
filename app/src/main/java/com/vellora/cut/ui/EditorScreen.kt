@@ -2,11 +2,15 @@ package com.vellora.cut.ui
 
 import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -130,7 +134,7 @@ fun EditorScreen(videoUri: String, onBack: () -> Unit) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(200.dp)
+                .height(275.dp)
                 .background(BackgroundDark)
         ) {
             // Controls row: Fullscreen | Play(center) | Link+Undo+Redo
@@ -148,13 +152,18 @@ fun EditorScreen(videoUri: String, onBack: () -> Unit) {
                     Text("⛶", color = TextPrimary, fontSize = 18.sp)
                 }
 
-                // Center: Play/Pause — position absolute left:50%
-                IconButton(
-                    onClick = {
-                        if (exoPlayer.isPlaying) { exoPlayer.pause(); isPlaying = false }
-                        else { exoPlayer.play(); isPlaying = true }
-                    },
-                    modifier = Modifier.align(Alignment.Center)
+                // Center: Play/Pause — no ripple
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            if (exoPlayer.isPlaying) { exoPlayer.pause(); isPlaying = false }
+                            else { exoPlayer.play(); isPlaying = true }
+                        }
+                        .padding(8.dp)
                 ) {
                     Text(
                         if (isPlaying) "⏸" else "▶",

@@ -15,7 +15,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -23,7 +22,7 @@ import androidx.compose.ui.unit.sp
 import com.vellora.cut.ui.theme.*
 import kotlinx.coroutines.launch
 
-// Constants — CapCut Mini se match
+// Layout constants for the timeline strip
 const val PX_PER_SEC = 50f   // 1 second = 50px
 const val TIMELINE_HEIGHT = 54  // clip strip height dp
 

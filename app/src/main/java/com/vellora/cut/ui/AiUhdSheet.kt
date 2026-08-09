@@ -291,7 +291,7 @@ fun AiUhdSheet(
                         ) {
                             Text("Watermark", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text("CapCut", color = Color(0xFF666666), fontSize = 13.sp)
+                                Text("VELLORA CUT", color = Color(0xFF666666), fontSize = 13.sp)
                                 Text("›", color = Color(0xFF666666), fontSize = 16.sp)
                             }
                         }
@@ -343,7 +343,7 @@ fun AiUhdSheet(
                         ) {
                             Text("Watermark", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text("CapCut", color = Color(0xFF666666), fontSize = 13.sp)
+                                Text("VELLORA CUT", color = Color(0xFF666666), fontSize = 13.sp)
                                 Text("›", color = Color(0xFF666666), fontSize = 16.sp)
                             }
                         }

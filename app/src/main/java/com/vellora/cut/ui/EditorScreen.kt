@@ -20,9 +20,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.vellora.cut.ui.theme.*
+import kotlinx.coroutines.delay
 
 @Composable
 fun EditorScreen(videoUri: String, onBack: () -> Unit) {
@@ -32,11 +34,39 @@ fun EditorScreen(videoUri: String, onBack: () -> Unit) {
     var showAiUhd by remember { mutableStateOf(false) }
     var exportSettings by remember { mutableStateOf(ExportSettings()) }
 
+    // Timeline state — driven by the actual ExoPlayer, fed into TimelineView
+    var videoDurationSec by remember { mutableStateOf(0f) }
+    var currentTimeSec by remember { mutableStateOf(0f) }
+
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(MediaItem.fromUri(Uri.parse(videoUri)))
             prepare()
             playWhenReady = false
+        }
+    }
+
+    // Pick up duration once the player is ready, and playing/paused state changes
+    DisposableEffect(exoPlayer) {
+        val listener = object : Player.Listener {
+            override fun onEvents(player: Player, events: Player.Events) {
+                if (player.duration > 0) {
+                    videoDurationSec = player.duration / 1000f
+                }
+            }
+            override fun onIsPlayingChanged(playing: Boolean) {
+                isPlaying = playing
+            }
+        }
+        exoPlayer.addListener(listener)
+        onDispose { exoPlayer.removeListener(listener) }
+    }
+
+    // While playing, poll current position so the timeline scrubber moves with playback
+    LaunchedEffect(isPlaying) {
+        while (isPlaying) {
+            currentTimeSec = exoPlayer.currentPosition / 1000f
+            delay(200)
         }
     }
 
@@ -95,76 +125,42 @@ fun EditorScreen(videoUri: String, onBack: () -> Unit) {
                 )
             }
 
-            // TIMELINE WRAP
-            Column(modifier = Modifier.fillMaxWidth().height(200.dp).background(BackgroundDark)) {
-                Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
-                    IconButton(onClick = { }, modifier = Modifier.align(Alignment.CenterStart)) {
-                        Text("⛶", color = TextPrimary, fontSize = 18.sp)
-                    }
-                    Box(
-                        modifier = Modifier.align(Alignment.Center)
-                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                                if (exoPlayer.isPlaying) { exoPlayer.pause(); isPlaying = false }
-                                else { exoPlayer.play(); isPlaying = true }
-                            }.padding(8.dp)
-                    ) {
-                        Text(if (isPlaying) "⏸" else "▶", color = TextPrimary, fontSize = 16.sp)
-                    }
-                    Row(modifier = Modifier.align(Alignment.CenterEnd), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("⧉", color = TextSecondary, fontSize = 16.sp)
-                            Text("ON", color = CyanPrimary, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Text("↩", color = TextSecondary, fontSize = 20.sp, modifier = Modifier.padding(horizontal = 6.dp))
-                        Text("↪", color = TextSecondary, fontSize = 20.sp, modifier = Modifier.padding(end = 4.dp))
-                    }
+            // PLAYBACK CONTROL ROW (play/pause + basic transport)
+            Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
+                IconButton(onClick = { }, modifier = Modifier.align(Alignment.CenterStart)) {
+                    Text("⛶", color = TextPrimary, fontSize = 18.sp)
                 }
-
-                Row(modifier = Modifier.fillMaxWidth().height(24.dp).background(SurfaceVariant).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("00:00 / 00:00", color = TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-                    Row(horizontalArrangement = Arrangement.spacedBy(40.dp)) {
-                        listOf("00:01","00:02","00:03").forEach { Text(it, color = TextSecondary, fontSize = 9.sp) }
-                    }
+                Box(
+                    modifier = Modifier.align(Alignment.Center)
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                            if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+                        }.padding(8.dp)
+                ) {
+                    Text(if (isPlaying) "⏸" else "▶", color = TextPrimary, fontSize = 16.sp)
                 }
-
-                Row(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                    Column(modifier = Modifier.width(70.dp).fillMaxHeight().background(BackgroundDark), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Row(modifier = Modifier.fillMaxWidth().height(54.dp).background(BackgroundDark), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(end = 4.dp)) {
-                                Text("🔇", fontSize = 11.sp)
-                                Text("Mute\nclip", color = TextSecondary, fontSize = 6.sp)
-                            }
-                            Box(modifier = Modifier.size(36.dp).background(Color(0xFF2A2A2A), RoundedCornerShape(6.dp)), contentAlignment = Alignment.Center) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("✏️", fontSize = 10.sp)
-                                    Text("Cover", color = TextSecondary, fontSize = 6.sp)
-                                }
-                            }
-                        }
-                        Box(modifier = Modifier.fillMaxWidth().height(42.dp).background(BackgroundDark), contentAlignment = Alignment.Center) {
-                            Box(modifier = Modifier.size(36.dp).background(Color(0xFF2A2A2A), RoundedCornerShape(6.dp)), contentAlignment = Alignment.Center) {
-                                Text("♪", color = CyanPrimary, fontSize = 14.sp)
-                            }
-                        }
-                        Box(modifier = Modifier.fillMaxWidth().height(42.dp).background(BackgroundDark), contentAlignment = Alignment.Center) {
-                            Box(modifier = Modifier.size(36.dp).background(Color(0xFF2A2A2A), RoundedCornerShape(6.dp)), contentAlignment = Alignment.Center) {
-                                Text("T", color = TextSecondary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
+                Row(modifier = Modifier.align(Alignment.CenterEnd), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("⧉", color = TextSecondary, fontSize = 16.sp)
+                        Text("ON", color = CyanPrimary, fontSize = 8.sp, fontWeight = FontWeight.Bold)
                     }
-                    Column(modifier = Modifier.fillMaxSize().horizontalScroll(rememberScrollState())) {
-                        Box(modifier = Modifier.width(400.dp).height(54.dp).background(Color(0xFF1A1A1A)), contentAlignment = Alignment.Center) {
-                            Text("── Video Clip ──", color = CyanPrimary, fontSize = 12.sp)
-                        }
-                        Box(modifier = Modifier.width(400.dp).height(42.dp).padding(top = 2.dp).background(BackgroundDark).padding(start = 8.dp), contentAlignment = Alignment.CenterStart) {
-                            Text("+ Add audio", color = TextSecondary, fontSize = 12.sp)
-                        }
-                        Box(modifier = Modifier.width(400.dp).height(42.dp).padding(top = 2.dp).background(BackgroundDark).padding(start = 8.dp), contentAlignment = Alignment.CenterStart) {
-                            Text("+ Add text", color = TextSecondary, fontSize = 12.sp)
-                        }
-                    }
+                    Text("↩", color = TextSecondary, fontSize = 20.sp, modifier = Modifier.padding(horizontal = 6.dp))
+                    Text("↪", color = TextSecondary, fontSize = 20.sp, modifier = Modifier.padding(end = 4.dp))
                 }
             }
+
+            // TIMELINE — now using the real reusable TimelineView composable
+            // instead of a duplicated inline implementation.
+            TimelineView(
+                state = TimelineState(
+                    videoDuration = videoDurationSec,
+                    currentTime = currentTimeSec
+                ),
+                onTimeChange = { newTime ->
+                    currentTimeSec = newTime
+                    exoPlayer.seekTo((newTime * 1000).toLong())
+                },
+                modifier = Modifier.weight(1f, fill = false)
+            )
 
             // BOTTOM TOOLBAR
             Row(modifier = Modifier.fillMaxWidth().background(SurfaceVariant).horizontalScroll(rememberScrollState()).navigationBarsPadding().padding(vertical = 11.dp)) {

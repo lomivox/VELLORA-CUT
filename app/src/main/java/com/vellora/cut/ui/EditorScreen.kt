@@ -25,8 +25,12 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.vellora.cut.R
+import com.vellora.cut.timeline.ClipSegment
+import com.vellora.cut.timeline.SplitController
+import com.vellora.cut.timeline.TimelineEditState
 import com.vellora.cut.ui.theme.*
 import kotlinx.coroutines.delay
+import java.util.UUID
 
 @Composable
 fun EditorScreen(videoUri: String, onBack: () -> Unit) {
@@ -36,9 +40,11 @@ fun EditorScreen(videoUri: String, onBack: () -> Unit) {
     var showAiUhd by remember { mutableStateOf(false) }
     var exportSettings by remember { mutableStateOf(ExportSettings()) }
 
-    // Timeline state — driven by the actual ExoPlayer, fed into TimelineView
-    var videoDurationSec by remember { mutableStateOf(0f) }
-    var currentTimeSec by remember { mutableStateOf(0f) }
+    // Timeline edit state — real segment model (Split/Trim act on this).
+    // Starts empty; a single segment spanning the whole clip is added once
+    // the player reports the real duration (see DisposableEffect below).
+    var editState by remember { mutableStateOf(TimelineEditState()) }
+    var sourceDurationMs by remember { mutableStateOf(0L) }
 
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
@@ -48,12 +54,25 @@ fun EditorScreen(videoUri: String, onBack: () -> Unit) {
         }
     }
 
-    // Pick up duration once the player is ready, and playing/paused state changes
+    // Pick up duration once the player is ready, and playing/paused state changes.
+    // Once we learn the real duration, seed the timeline with a single segment
+    // spanning the whole source clip (the starting point before any Split/Trim).
     DisposableEffect(exoPlayer) {
         val listener = object : Player.Listener {
             override fun onEvents(player: Player, events: Player.Events) {
-                if (player.duration > 0) {
-                    videoDurationSec = player.duration / 1000f
+                if (player.duration > 0 && sourceDurationMs == 0L) {
+                    sourceDurationMs = player.duration
+                    val wholeClip = ClipSegment(
+                        id = UUID.randomUUID().toString(),
+                        sourceUri = videoUri,
+                        sourceInMs = 0L,
+                        sourceOutMs = player.duration,
+                        timelineStartMs = 0L
+                    )
+                    editState = editState.copy(
+                        segments = listOf(wholeClip),
+                        selectedSegmentId = wholeClip.id
+                    )
                 }
             }
             override fun onIsPlayingChanged(playing: Boolean) {
@@ -67,7 +86,7 @@ fun EditorScreen(videoUri: String, onBack: () -> Unit) {
     // While playing, poll current position so the timeline scrubber moves with playback
     LaunchedEffect(isPlaying) {
         while (isPlaying) {
-            currentTimeSec = exoPlayer.currentPosition / 1000f
+            editState = editState.copy(playheadMs = exoPlayer.currentPosition)
             delay(200)
         }
     }
@@ -150,16 +169,15 @@ fun EditorScreen(videoUri: String, onBack: () -> Unit) {
                 }
             }
 
-            // TIMELINE — now using the real reusable TimelineView composable
-            // instead of a duplicated inline implementation.
+            // TIMELINE — now driven by the real segment-based edit state
+            // (Split/Trim act on this, via SplitController/TrimController).
             TimelineView(
-                state = TimelineState(
-                    videoDuration = videoDurationSec,
-                    currentTime = currentTimeSec
-                ),
-                onTimeChange = { newTime ->
-                    currentTimeSec = newTime
-                    exoPlayer.seekTo((newTime * 1000).toLong())
+                editState = editState,
+                sourceDurationMs = sourceDurationMs,
+                onEditStateChange = { editState = it },
+                onTimeChange = { newTimeMs ->
+                    editState = editState.copy(playheadMs = newTimeMs)
+                    exoPlayer.seekTo(newTimeMs)
                 },
                 modifier = Modifier.weight(1f, fill = false)
             )
@@ -169,19 +187,31 @@ fun EditorScreen(videoUri: String, onBack: () -> Unit) {
             // instead of emoji glyphs, so height matches the CapCut Mini ~54-56dp toolbar.
             Row(modifier = Modifier.fillMaxWidth().background(SurfaceVariant).horizontalScroll(rememberScrollState()).navigationBarsPadding().padding(vertical = 11.dp)) {
                 listOf(
-                    R.drawable.ic_trim to "Trim",
-                    R.drawable.ic_text to "Text",
-                    R.drawable.ic_audio to "Audio",
-                    R.drawable.ic_volume to "Volume",
-                    R.drawable.ic_noise to "Noise",
-                    R.drawable.ic_speed to "Speed",
-                    R.drawable.ic_filter to "Filter",
-                    R.drawable.ic_rotate to "Rotate",
-                    R.drawable.ic_overlay to "Overlay",
-                    R.drawable.ic_ratio to "Ratio",
-                    R.drawable.ic_background to "Background"
-                ).forEach { (iconRes, label) ->
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 20.dp)) {
+                    Triple(R.drawable.ic_trim, "Split") {
+                        // Scissors icon = Split at playhead (matches CapCut's own convention;
+                        // edge trimming happens via the in-timeline drag handles instead).
+                        val result = SplitController.split(editState)
+                        if (result is SplitController.SplitResult.Success) {
+                            editState = result.newState
+                        }
+                    },
+                    Triple(R.drawable.ic_text, "Text") {},
+                    Triple(R.drawable.ic_audio, "Audio") {},
+                    Triple(R.drawable.ic_volume, "Volume") {},
+                    Triple(R.drawable.ic_noise, "Noise") {},
+                    Triple(R.drawable.ic_speed, "Speed") {},
+                    Triple(R.drawable.ic_filter, "Filter") {},
+                    Triple(R.drawable.ic_rotate, "Rotate") {},
+                    Triple(R.drawable.ic_overlay, "Overlay") {},
+                    Triple(R.drawable.ic_ratio, "Ratio") {},
+                    Triple(R.drawable.ic_background, "Background") {}
+                ).forEach { (iconRes, label, onClick) ->
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .padding(horizontal = 20.dp)
+                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick)
+                    ) {
                         Icon(
                             painter = painterResource(id = iconRes),
                             contentDescription = label,

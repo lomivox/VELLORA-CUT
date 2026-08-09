@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -23,6 +24,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import com.vellora.cut.R
 import com.vellora.cut.ui.theme.*
 import kotlinx.coroutines.delay
 
@@ -162,12 +164,31 @@ fun EditorScreen(videoUri: String, onBack: () -> Unit) {
                 modifier = Modifier.weight(1f, fill = false)
             )
 
-            // BOTTOM TOOLBAR
+            // BOTTOM TOOLBAR — real vector icons (extracted from CapCut Mini reference,
+            // converted to Android VectorDrawables), sized to match the 16px reference icons
+            // instead of emoji glyphs, so height matches the CapCut Mini ~54-56dp toolbar.
             Row(modifier = Modifier.fillMaxWidth().background(SurfaceVariant).horizontalScroll(rememberScrollState()).navigationBarsPadding().padding(vertical = 11.dp)) {
-                listOf("✂" to "Trim","T" to "Text","♪" to "Audio","🔊" to "Volume","🎙" to "Noise","⟳" to "Speed","✨" to "Filter","↻" to "Rotate","⊞" to "Overlay","⬜" to "Ratio","▦" to "Background").forEach { (icon, label) ->
+                listOf(
+                    R.drawable.ic_trim to "Trim",
+                    R.drawable.ic_text to "Text",
+                    R.drawable.ic_audio to "Audio",
+                    R.drawable.ic_volume to "Volume",
+                    R.drawable.ic_noise to "Noise",
+                    R.drawable.ic_speed to "Speed",
+                    R.drawable.ic_filter to "Filter",
+                    R.drawable.ic_rotate to "Rotate",
+                    R.drawable.ic_overlay to "Overlay",
+                    R.drawable.ic_ratio to "Ratio",
+                    R.drawable.ic_background to "Background"
+                ).forEach { (iconRes, label) ->
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 20.dp)) {
-                        Text(icon, fontSize = 20.sp, color = TextPrimary)
-                        Spacer(modifier = Modifier.height(3.dp))
+                        Icon(
+                            painter = painterResource(id = iconRes),
+                            contentDescription = label,
+                            tint = TextPrimary,
+                            modifier = Modifier.size(17.dp)
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(label, color = TextSecondary, fontSize = 10.sp)
                     }
                 }

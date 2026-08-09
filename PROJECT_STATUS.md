@@ -38,7 +38,7 @@
 - `EditorScreen.kt` — Media3/ExoPlayer preview کے ساتھ CapCut طرز کا layout؛ اب `TimelineView` composable کو صحیح طریقے سے استعمال کرتا ہے (پہلے duplicate/غیر مربوط تھا، ابھی ٹھیک ہوا)؛ play/pause اور scrub حقیقی طور پر ExoPlayer سے جڑے ہیں
 - `TimelineView.kt` — ruler، horizontal scroll، center-line، drag-to-seek سب فعال؛ ابھی صرف ایک ہی ویڈیو کلپ دکھاتا ہے (multi-clip، split، trim ابھی باقی)
 - `AiUhdSheet.kt` — Export settings کا مکمل UI (resolution/fps/bitrate sliders) — صرف UI ہے، حقیقی export logic (FFmpeg سے جوڑنا) ابھی Phase 2 میں ہوگا
-- Bottom toolbar کے تمام بٹن (Trim, Text, Audio, Filter, Rotate...) ابھی صرف ظاہری ہیں، کوئی فعالیت نہیں
+- Bottom toolbar کے تمام بٹن (Trim, Text, Audio, Filter, Rotate...) اب اصل vector icons استعمال کرتے ہیں (CapCut Mini سے نکالے گئے)، مگر ابھی صرف ظاہری ہیں — دبانے پر کوئی فعالیت نہیں
 
 باقی (Phase 1 مکمل کرنے کے لیے):
 - Multi-clip timeline (ایک سے زیادہ clips شامل کرنا)
@@ -61,6 +61,8 @@
 - (دوسری chat سے) HomeScreen, EditorScreen, TimelineView, AiUhdSheet, Theme شامل ہوئے
 - Fix: TimelineView.kt کو EditorScreen.kt میں صحیح طریقے سے wire کیا (پہلے duplicate inline UI تھی)
 - Fix: AiUhdSheet.kt اور TimelineView.kt میں رہ گیا "CapCut" نام ہٹا کر "VELLORA CUT" / neutral کیا گیا
+- Pixel audit: Timeline (275dp) اور Preview area CapCut Mini سے مکمل match پائے گئے؛ صرف bottom toolbar میں فرق ملا (emoji بمقابلہ vector icons)
+- Bottom toolbar کے 11 icons (Trim, Text, Audio, Volume, Noise, Speed, Filter, Rotate, Overlay, Ratio, Background) CapCut Mini کی اصل SVG سے نکال کر Android vector drawables میں تبدیل کیے، emoji کی جگہ لگائے — سائز 17dp (CapCut Mini کے 16px کے قریب)
 
 ---
 

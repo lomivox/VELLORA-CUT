@@ -1,6 +1,9 @@
 package com.vellora.cut.ui
 
+import android.media.MediaMetadataRetriever
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -29,18 +32,53 @@ import com.vellora.cut.timeline.ClipSegment
 import com.vellora.cut.timeline.SplitController
 import com.vellora.cut.timeline.TimelineEditState
 import com.vellora.cut.ui.theme.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
+
+/** Reads a video file's duration off the main thread via MediaMetadataRetriever. */
+private suspend fun readVideoDurationMs(context: android.content.Context, uri: Uri): Long =
+    withContext(Dispatchers.IO) {
+        val retriever = MediaMetadataRetriever()
+        try {
+            retriever.setDataSource(context, uri)
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+        } catch (e: Exception) {
+            0L
+        } finally {
+            retriever.release()
+        }
+    }
+
+/** Given a project-time position, finds which segment it falls in and the seek target within it. */
+private fun timelineMsToMediaSeek(segments: List<ClipSegment>, timeMs: Long): Pair<Int, Long> {
+    val ordered = segments.sortedBy { it.timelineStartMs }
+    val index = ordered.indexOfFirst { timeMs >= it.timelineStartMs && timeMs < it.timelineEndMs }
+        .let { if (it == -1) ordered.lastIndex.coerceAtLeast(0) else it }
+    val seg = ordered.getOrNull(index) ?: return 0 to 0L
+    val withinSourceMs = seg.sourceInMs + (timeMs - seg.timelineStartMs).coerceAtLeast(0L)
+    return index to withinSourceMs
+}
+
+/** Inverse: current playing media item + position within it -> project-time (timeline) position. */
+private fun mediaSeekToTimelineMs(segments: List<ClipSegment>, mediaItemIndex: Int, positionMs: Long): Long {
+    val ordered = segments.sortedBy { it.timelineStartMs }
+    val seg = ordered.getOrNull(mediaItemIndex) ?: return 0L
+    return seg.timelineStartMs + (positionMs - seg.sourceInMs).coerceAtLeast(0L)
+}
 
 @Composable
 fun EditorScreen(videoUri: String, onBack: () -> Unit) {
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     var isPlaying by remember { mutableStateOf(false) }
     var showAiUhd by remember { mutableStateOf(false) }
     var exportSettings by remember { mutableStateOf(ExportSettings()) }
 
-    // Timeline edit state — real segment model (Split/Trim act on this).
+    // Timeline edit state — real segment model (Split/Trim/Add-clip act on this).
     // Starts empty; a single segment spanning the whole clip is added once
     // the player reports the real duration (see DisposableEffect below).
     var editState by remember { mutableStateOf(TimelineEditState()) }
@@ -51,6 +89,29 @@ fun EditorScreen(videoUri: String, onBack: () -> Unit) {
             setMediaItem(MediaItem.fromUri(Uri.parse(videoUri)))
             prepare()
             playWhenReady = false
+        }
+    }
+
+    // "+" Add Clip — picks another video and appends it as a new segment
+    // right after the current last one (matches the reference "Add Clip" button).
+    val addClipLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            coroutineScope.launch {
+                val durationMs = readVideoDurationMs(context, uri)
+                if (durationMs > 0) {
+                    val newSegment = ClipSegment(
+                        id = UUID.randomUUID().toString(),
+                        sourceUri = uri.toString(),
+                        sourceInMs = 0L,
+                        sourceOutMs = durationMs,
+                        timelineStartMs = editState.totalDurationMs
+                    )
+                    editState = editState.copy(
+                        segments = editState.segments + newSegment,
+                        selectedSegmentId = newSegment.id
+                    )
+                }
+            }
         }
     }
 
@@ -83,10 +144,44 @@ fun EditorScreen(videoUri: String, onBack: () -> Unit) {
         onDispose { exoPlayer.removeListener(listener) }
     }
 
-    // While playing, poll current position so the timeline scrubber moves with playback
+    // Rebuild the ExoPlayer playlist whenever the segment list changes (add-clip,
+    // split). Each segment becomes one MediaItem, clipped to its own in/out range,
+    // so playback genuinely reflects the timeline — not just the visual boxes.
+    // NOTE: this also re-fires on every trim-drag pixel (segments change on each
+    // callback), which can make trimming feel less smooth during active playback;
+    // an optimization (rebuild only on drag-end) can follow later if needed.
+    LaunchedEffect(editState.segments.map { "${it.id}:${it.sourceInMs}:${it.sourceOutMs}:${it.timelineStartMs}" }) {
+        if (editState.segments.isNotEmpty()) {
+            val ordered = editState.segments.sortedBy { it.timelineStartMs }
+            val items = ordered.map { seg ->
+                MediaItem.Builder()
+                    .setUri(seg.sourceUri)
+                    .setClippingConfiguration(
+                        MediaItem.ClippingConfiguration.Builder()
+                            .setStartPositionMs(seg.sourceInMs)
+                            .setEndPositionMs(seg.sourceOutMs)
+                            .build()
+                    )
+                    .build()
+            }
+            val wasPlaying = exoPlayer.isPlaying
+            exoPlayer.setMediaItems(items)
+            exoPlayer.prepare()
+            exoPlayer.playWhenReady = wasPlaying
+        }
+    }
+
+    // While playing, poll current position (converted from media-item-local time
+    // back to overall project time) so the timeline scrubber moves with playback.
     LaunchedEffect(isPlaying) {
         while (isPlaying) {
-            editState = editState.copy(playheadMs = exoPlayer.currentPosition)
+            editState = editState.copy(
+                playheadMs = mediaSeekToTimelineMs(
+                    editState.segments,
+                    exoPlayer.currentMediaItemIndex,
+                    exoPlayer.currentPosition
+                )
+            )
             delay(200)
         }
     }
@@ -170,17 +265,37 @@ fun EditorScreen(videoUri: String, onBack: () -> Unit) {
             }
 
             // TIMELINE — now driven by the real segment-based edit state
-            // (Split/Trim act on this, via SplitController/TrimController).
-            TimelineView(
-                editState = editState,
-                sourceDurationMs = sourceDurationMs,
-                onEditStateChange = { editState = it },
-                onTimeChange = { newTimeMs ->
-                    editState = editState.copy(playheadMs = newTimeMs)
-                    exoPlayer.seekTo(newTimeMs)
-                },
-                modifier = Modifier.weight(1f, fill = false)
-            )
+            // (Split/Trim act on this, via SplitController/TrimController),
+            // plus the "+" Add Clip button (matches CapCut Mini reference:
+            // 28x28 white rounded button, top-right of the timeline area).
+            Box(modifier = Modifier.weight(1f, fill = false)) {
+                TimelineView(
+                    editState = editState,
+                    sourceDurationMs = sourceDurationMs,
+                    onEditStateChange = { editState = it },
+                    onTimeChange = { newTimeMs ->
+                        editState = editState.copy(playheadMs = newTimeMs)
+                        val (itemIndex, withinSourceMs) = timelineMsToMediaSeek(editState.segments, newTimeMs)
+                        exoPlayer.seekTo(itemIndex, withinSourceMs)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(end = 13.dp, top = 6.dp)
+                        .size(28.dp)
+                        .background(Color.White, RoundedCornerShape(6.dp))
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                            addClipLauncher.launch("video/*")
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    // Simple "+" drawn from two bars (no extra icon-library dependency needed)
+                    Box(modifier = Modifier.size(width = 14.dp, height = 2.dp).background(Color.Black))
+                    Box(modifier = Modifier.size(width = 2.dp, height = 14.dp).background(Color.Black))
+                }
+            }
 
             // BOTTOM TOOLBAR — real vector icons (extracted from CapCut Mini reference,
             // converted to Android VectorDrawables), sized to match the 16px reference icons

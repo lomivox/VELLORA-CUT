@@ -62,6 +62,7 @@ fun TimelineView(
     Box(
         modifier = modifier
             .fillMaxWidth()
+            .padding(top = 50.dp)
             .onGloballyPositioned { coords ->
                 containerWidthPx = coords.size.width.toFloat()
             }

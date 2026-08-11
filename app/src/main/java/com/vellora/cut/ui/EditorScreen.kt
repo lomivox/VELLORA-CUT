@@ -234,7 +234,7 @@ fun EditorScreen(videoUri: String, onBack: () -> Unit) {
             }
 
             // PREVIEW
-            Box(modifier = Modifier.fillMaxWidth().height(screenWidth).background(Color(0xFF161616))) {
+            Box(modifier = Modifier.fillMaxWidth().height(screenWidth - 100.dp).background(Color(0xFF161616))) {
                 AndroidView(
                     factory = { PlayerView(it).apply { player = exoPlayer; useController = false } },
                     modifier = Modifier.fillMaxSize()

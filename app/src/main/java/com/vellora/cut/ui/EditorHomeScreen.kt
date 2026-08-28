@@ -13,10 +13,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import com.vellora.cut.ui.theme.*
 
 @Composable
-fun HomeScreen(onVideoSelected: (String) -> Unit) {
+fun EditorHomeScreen(onVideoSelected: (String) -> Unit, onBack: () -> Unit) {
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
@@ -26,10 +29,21 @@ fun HomeScreen(onVideoSelected: (String) -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(BackgroundDark),
-        contentAlignment = Alignment.Center
+            .background(BackgroundDark)
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        TextButton(
+            onClick = onBack,
+            modifier = Modifier
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .padding(8.dp)
+        ) {
+            Text(text = "← Hub", color = TextSecondary, fontSize = 13.sp)
+        }
+
+        Column(
+            modifier = Modifier.align(Alignment.Center),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
 
             Text(
                 text = "VELLORA CUT",

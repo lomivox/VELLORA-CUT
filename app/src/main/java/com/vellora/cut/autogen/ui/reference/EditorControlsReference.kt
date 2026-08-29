@@ -29,7 +29,7 @@ import com.vellora.cut.ui.theme.*
  *
  * These three composables are the ONLY pieces kept from the old Editor —
  * everything else (EditorScreen, EditorHomeScreen, HubScreen, TimelineView,
- * AiUhdSheet, the `timeline/*` clip-editing engine, NativeEngine, and the
+ * AiUhdSheet, the `timeline` package's clip-editing engine, NativeEngine, and the
  * native `cpp/` folder) has been deleted.
  *
  * They are pure, parameterized, presentation-only composables — no

@@ -41,7 +41,8 @@ fun PromptPasteScreen(
     db: AppDatabase,
     projectId: Long,
     onBack: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onOpenTimeline: () -> Unit
 ) {
     val context = LocalContext.current
     val dao = db.autoGenDao()
@@ -123,6 +124,16 @@ fun PromptPasteScreen(
                             color = TextSecondary,
                             fontSize = 11.sp
                         )
+                    }
+
+                    if (remainingCount == 0 && !isRunning) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        OutlinedButton(
+                            onClick = onOpenTimeline,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(text = "Continue → Timeline")
+                        }
                     }
                 }
             }

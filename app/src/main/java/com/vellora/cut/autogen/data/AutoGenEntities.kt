@@ -28,8 +28,18 @@ data class AutoGenProjectEntity(
     val imageDurationSec: Int,
     val resolution: String,
     val status: String,
-    val createdAt: Long
+    val createdAt: Long,
+    /** How image durations reconcile against the voice-over length: "scale" or "hold_last". */
+    val timelineMode: String = TimelineMode.SCALE
 )
+
+/** Values for [AutoGenProjectEntity.timelineMode]. */
+object TimelineMode {
+    /** Every image's duration is stretched/shrunk equally so total = voice-over length. */
+    const val SCALE = "scale"
+    /** Every image keeps its set duration; only the last image absorbs the remainder. */
+    const val HOLD_LAST = "hold_last"
+}
 
 @Entity(tableName = "autogen_prompts")
 data class PromptEntity(

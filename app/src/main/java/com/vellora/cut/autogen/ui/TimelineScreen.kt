@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
+import com.vellora.cut.R
 import com.vellora.cut.autogen.data.AutoGenProjectEntity
 import com.vellora.cut.autogen.data.AutoGenProjectStatus
 import com.vellora.cut.autogen.data.MotionEffect
@@ -37,6 +38,10 @@ import com.vellora.cut.autogen.timeline.TimelineImage
 import com.vellora.cut.autogen.timeline.computeTimeline
 import com.vellora.cut.autogen.timeline.timelineStartOffsets
 import com.vellora.cut.autogen.timeline.totalDurationMs
+import com.vellora.cut.autogen.ui.reference.BottomToolbarReference
+import com.vellora.cut.autogen.ui.reference.EditorTopBarReference
+import com.vellora.cut.autogen.ui.reference.PreviewMiddleControlsReference
+import com.vellora.cut.autogen.ui.reference.ToolbarAction
 import com.vellora.cut.data.AppDatabase
 import com.vellora.cut.ui.theme.*
 import kotlinx.coroutines.delay
@@ -80,26 +85,26 @@ fun TimelineScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TextButton(onClick = onBack, contentPadding = PaddingValues(0.dp)) {
-                    Text(text = "← Prompts", color = TextSecondary, fontSize = 13.sp)
-                }
-                Spacer(modifier = Modifier.width(10.dp))
-                Text(text = "Timeline", color = CyanPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            // ---- TOP BAR (~6.8%) — extracted from the old Editor (EditorControlsReference) ----
+            Box(modifier = Modifier.fillMaxWidth().weight(0.068f)) {
+                EditorTopBarReference(
+                    onClose = onBack,
+                    onSearch = { },
+                    trailingActions = {
+                        Text(text = "Timeline", color = CyanPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    }
+                )
             }
 
             if (currentProject == null) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                     Text(text = "Loading…", color = TextSecondary, fontSize = 13.sp)
                 }
                 return@Column
             }
 
             if (doneImages.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize().padding(20.dp), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.fillMaxWidth().weight(1f).padding(20.dp), contentAlignment = Alignment.Center) {
                     Text(
                         text = "ابھی کوئی image تیار نہیں — پہلے Prompts screen پر جا کر Generate All چلائیں",
                         color = TextSecondary,
@@ -117,20 +122,31 @@ fun TimelineScreen(
             }
             val totalMs = totalDurationMs(timeline)
 
-            // ---- 60% Preview (top) ----
+            // ---- PREVIEW (~48.7%) ----
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(0.6f)
+                    .weight(0.487f)
             ) {
                 PreviewPlayer(project = currentProject, timeline = timeline, totalMs = totalMs)
             }
 
-            // ---- 40% controls + timeline (bottom, scrollable) ----
+            // ---- CONTROLS (~4.9%) — extracted from the old Editor; layout only, no button functions wired yet ----
+            Box(modifier = Modifier.fillMaxWidth().weight(0.049f)) {
+                PreviewMiddleControlsReference(
+                    isPlaying = false,
+                    onFullscreen = { },
+                    onPlayPause = { },
+                    onUndo = { },
+                    onRedo = { }
+                )
+            }
+
+            // ---- TIMELINE (~30%) — content untouched, only resized to fit the new layout ----
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(0.4f)
+                    .weight(0.30f)
                     .verticalScroll(rememberScrollState())
                     .padding(20.dp)
             ) {
@@ -280,6 +296,25 @@ fun TimelineScreen(
                     }
                 )
                 Spacer(modifier = Modifier.height(20.dp))
+            }
+
+            // ---- NAVIGATION (~9.8%) — extracted from the old Editor; layout only, no button functions wired yet ----
+            Box(modifier = Modifier.fillMaxWidth().weight(0.098f)) {
+                BottomToolbarReference(
+                    actions = listOf(
+                        ToolbarAction(R.drawable.ic_trim, "Split") { },
+                        ToolbarAction(R.drawable.ic_text, "Text") { },
+                        ToolbarAction(R.drawable.ic_audio, "Audio") { },
+                        ToolbarAction(R.drawable.ic_volume, "Volume") { },
+                        ToolbarAction(R.drawable.ic_noise, "Noise") { },
+                        ToolbarAction(R.drawable.ic_speed, "Speed") { },
+                        ToolbarAction(R.drawable.ic_filter, "Filter") { },
+                        ToolbarAction(R.drawable.ic_rotate, "Rotate") { },
+                        ToolbarAction(R.drawable.ic_overlay, "Overlay") { },
+                        ToolbarAction(R.drawable.ic_ratio, "Ratio") { },
+                        ToolbarAction(R.drawable.ic_background, "Background") { }
+                    )
+                )
             }
         }
     }

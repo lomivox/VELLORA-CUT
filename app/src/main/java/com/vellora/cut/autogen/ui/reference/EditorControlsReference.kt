@@ -1,5 +1,6 @@
 package com.vellora.cut.autogen.ui.reference
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -14,9 +15,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vellora.cut.ui.theme.*
@@ -55,19 +60,19 @@ fun EditorTopBarReference(
             .fillMaxWidth()
             .background(SurfaceDark)
             .statusBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
+            horizontalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             IconButton(onClick = onClose) {
-                Text("✕", color = TextPrimary, fontSize = 20.sp)
+                Text("✕", color = TextPrimary, fontSize = 26.sp)
             }
             IconButton(onClick = onSearch) {
-                Text("🔍", color = TextPrimary, fontSize = 18.sp)
+                Text("🔍", color = TextPrimary, fontSize = 22.sp)
             }
         }
         Row(
@@ -91,9 +96,9 @@ fun PreviewMiddleControlsReference(
     onUndo: () -> Unit,
     onRedo: () -> Unit
 ) {
-    Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
+    Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp)) {
         IconButton(onClick = onFullscreen, modifier = Modifier.align(Alignment.CenterStart)) {
-            Text("⛶", color = TextPrimary, fontSize = 18.sp)
+            Text("⛶", color = TextPrimary, fontSize = 24.sp)
         }
         Box(
             modifier = Modifier.align(Alignment.Center)
@@ -102,27 +107,27 @@ fun PreviewMiddleControlsReference(
                     indication = null,
                     onClick = onPlayPause
                 )
-                .padding(8.dp)
+                .padding(10.dp)
         ) {
-            Text(if (isPlaying) "⏸" else "▶", color = TextPrimary, fontSize = 16.sp)
+            PlayPauseGlyph(isPlaying = isPlaying, tint = TextPrimary, size = 22.dp)
         }
         Row(
             modifier = Modifier.align(Alignment.CenterEnd),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("⧉", color = TextSecondary, fontSize = 16.sp)
+                Text("⧉", color = TextSecondary, fontSize = 20.sp)
                 Text(
                     if (snapEnabled) "ON" else "OFF",
                     color = CyanPrimary,
-                    fontSize = 8.sp,
+                    fontSize = 9.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
             Text(
-                "↩", color = TextSecondary, fontSize = 20.sp,
-                modifier = Modifier.padding(horizontal = 6.dp)
+                "↩", color = TextSecondary, fontSize = 26.sp,
+                modifier = Modifier.padding(horizontal = 8.dp)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
@@ -130,8 +135,8 @@ fun PreviewMiddleControlsReference(
                     )
             )
             Text(
-                "↪", color = TextSecondary, fontSize = 20.sp,
-                modifier = Modifier.padding(end = 4.dp)
+                "↪", color = TextSecondary, fontSize = 26.sp,
+                modifier = Modifier.padding(end = 6.dp)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
@@ -154,6 +159,42 @@ data class ToolbarAction(
     val onClick: () -> Unit
 )
 
+// Hand-drawn play/pause glyph (instead of the ▶/⏸ emoji characters) — some
+// devices render those emoji with their own fixed colors (e.g. a yellow
+// pause icon) that ignore the requested tint. Drawing it ourselves keeps
+// both states in the exact same color.
+@Composable
+private fun PlayPauseGlyph(isPlaying: Boolean, tint: Color, size: Dp) {
+    Canvas(modifier = Modifier.size(size)) {
+        if (isPlaying) {
+            val barWidth = this.size.width * 0.28f
+            val barHeight = this.size.height * 0.82f
+            val gap = this.size.width * 0.16f
+            val top = (this.size.height - barHeight) / 2f
+            drawRect(
+                color = tint,
+                topLeft = Offset(center.x - gap / 2f - barWidth, top),
+                size = Size(barWidth, barHeight)
+            )
+            drawRect(
+                color = tint,
+                topLeft = Offset(center.x + gap / 2f, top),
+                size = Size(barWidth, barHeight)
+            )
+        } else {
+            val w = this.size.width
+            val h = this.size.height
+            val path = Path().apply {
+                moveTo(w * 0.24f, h * 0.12f)
+                lineTo(w * 0.24f, h * 0.88f)
+                lineTo(w * 0.86f, h * 0.5f)
+                close()
+            }
+            drawPath(path, color = tint)
+        }
+    }
+}
+
 @Composable
 fun BottomToolbarReference(actions: List<ToolbarAction>) {
     Row(
@@ -162,13 +203,13 @@ fun BottomToolbarReference(actions: List<ToolbarAction>) {
             .background(SurfaceVariant)
             .horizontalScroll(rememberScrollState())
             .navigationBarsPadding()
-            .padding(vertical = 11.dp)
+            .padding(vertical = 14.dp)
     ) {
         actions.forEach { action ->
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
-                    .padding(horizontal = 20.dp)
+                    .padding(horizontal = 18.dp)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
@@ -179,10 +220,10 @@ fun BottomToolbarReference(actions: List<ToolbarAction>) {
                     painter = painterResource(id = action.iconRes),
                     contentDescription = action.label,
                     tint = TextPrimary,
-                    modifier = Modifier.size(17.dp)
+                    modifier = Modifier.size(26.dp)
                 )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(action.label, color = TextSecondary, fontSize = 10.sp)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(action.label, color = TextSecondary, fontSize = 11.sp)
             }
         }
     }

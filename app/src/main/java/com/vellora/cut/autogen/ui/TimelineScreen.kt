@@ -2,8 +2,11 @@ package com.vellora.cut.autogen.ui
 
 import android.content.Intent
 import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -73,6 +76,37 @@ fun TimelineScreen(
         allPrompts.filter { it.status == PromptStatus.DONE }.sortedBy { it.orderIndex }
     }
 
+    // Hoisted so both the Controls row and the Preview player share one play/pause state,
+    // and so the Top Bar's Export action can trigger the same render logic as the Timeline's Render button.
+    var isPlaying by remember { mutableStateOf(false) }
+    var togglePlayPause by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var startRender by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    val audioLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        val proj = project
+        if (uri != null && proj != null) {
+            val durationMs = try {
+                val retriever = MediaMetadataRetriever()
+                try {
+                    retriever.setDataSource(context, uri)
+                    retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                        ?.toLongOrNull() ?: 0L
+                } finally {
+                    retriever.release()
+                }
+            } catch (e: Exception) {
+                0L
+            }
+            scope.launch {
+                val updated = proj.copy(voiceOverUri = uri.toString(), voiceOverDurationMs = durationMs)
+                dao.updateProject(updated)
+                project = updated
+            }
+        }
+    }
+
     LaunchedEffect(projectId) {
         project = dao.getProject(projectId)
     }
@@ -91,7 +125,15 @@ fun TimelineScreen(
                     onClose = onBack,
                     onSearch = { },
                     trailingActions = {
-                        Text(text = "Timeline", color = CyanPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        Button(
+                            onClick = { startRender?.invoke() },
+                            enabled = startRender != null && renderState !is RenderUiState.Rendering,
+                            shape = RoundedCornerShape(20.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary),
+                            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp)
+                        ) {
+                            Text(text = "Export", color = BackgroundDark, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 )
             }
@@ -128,15 +170,22 @@ fun TimelineScreen(
                     .fillMaxWidth()
                     .weight(0.487f)
             ) {
-                PreviewPlayer(project = currentProject, timeline = timeline, totalMs = totalMs)
+                PreviewPlayer(
+                    project = currentProject,
+                    timeline = timeline,
+                    totalMs = totalMs,
+                    isPlaying = isPlaying,
+                    onIsPlayingChange = { isPlaying = it },
+                    onTogglePlayPauseReady = { togglePlayPause = it }
+                )
             }
 
-            // ---- CONTROLS (~4.9%) — extracted from the old Editor; layout only, no button functions wired yet ----
+            // ---- CONTROLS (~4.9%) — extracted from the old Editor; Play/Pause wired, rest still layout-only ----
             Box(modifier = Modifier.fillMaxWidth().weight(0.049f)) {
                 PreviewMiddleControlsReference(
-                    isPlaying = false,
+                    isPlaying = isPlaying,
                     onFullscreen = { },
-                    onPlayPause = { },
+                    onPlayPause = { togglePlayPause?.invoke() },
                     onUndo = { },
                     onRedo = { }
                 )
@@ -251,38 +300,41 @@ fun TimelineScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                RenderSection(
-                    state = renderState,
-                    onRenderClick = {
-                        renderState = RenderUiState.Rendering(0f)
-                        RenderEngine.render(
-                            context = context,
-                            project = currentProject,
-                            timeline = timeline,
-                            totalDurationMs = totalMs,
-                            onProgress = { fraction ->
-                                renderState = RenderUiState.Rendering(fraction)
-                            },
-                            onComplete = { result ->
-                                when (result) {
-                                    is RenderResult.Success -> {
-                                        renderState = RenderUiState.Done(result.outputFile)
-                                        scope.launch {
-                                            val updated = currentProject.copy(
-                                                status = AutoGenProjectStatus.RENDERED,
-                                                renderedFilePath = result.outputFile.absolutePath
-                                            )
-                                            dao.updateProject(updated)
-                                            project = updated
-                                        }
-                                    }
-                                    is RenderResult.Failed -> {
-                                        renderState = RenderUiState.Error(result.message)
+                val triggerRender: () -> Unit = {
+                    renderState = RenderUiState.Rendering(0f)
+                    RenderEngine.render(
+                        context = context,
+                        project = currentProject,
+                        timeline = timeline,
+                        totalDurationMs = totalMs,
+                        onProgress = { fraction ->
+                            renderState = RenderUiState.Rendering(fraction)
+                        },
+                        onComplete = { result ->
+                            when (result) {
+                                is RenderResult.Success -> {
+                                    renderState = RenderUiState.Done(result.outputFile)
+                                    scope.launch {
+                                        val updated = currentProject.copy(
+                                            status = AutoGenProjectStatus.RENDERED,
+                                            renderedFilePath = result.outputFile.absolutePath
+                                        )
+                                        dao.updateProject(updated)
+                                        project = updated
                                     }
                                 }
+                                is RenderResult.Failed -> {
+                                    renderState = RenderUiState.Error(result.message)
+                                }
                             }
-                        )
-                    },
+                        }
+                    )
+                }
+                SideEffect { startRender = triggerRender }
+
+                RenderSection(
+                    state = renderState,
+                    onRenderClick = triggerRender,
                     onShareClick = { file ->
                         val uri = FileProvider.getUriForFile(
                             context, "${context.packageName}.fileprovider", file
@@ -304,14 +356,22 @@ fun TimelineScreen(
                     actions = listOf(
                         ToolbarAction(R.drawable.ic_trim, "Split") { },
                         ToolbarAction(R.drawable.ic_text, "Text") { },
-                        ToolbarAction(R.drawable.ic_audio, "Audio") { },
+                        ToolbarAction(R.drawable.ic_audio, "Audio") { audioLauncher.launch("audio/*") },
                         ToolbarAction(R.drawable.ic_volume, "Volume") { },
                         ToolbarAction(R.drawable.ic_noise, "Noise") { },
                         ToolbarAction(R.drawable.ic_speed, "Speed") { },
                         ToolbarAction(R.drawable.ic_filter, "Filter") { },
                         ToolbarAction(R.drawable.ic_rotate, "Rotate") { },
                         ToolbarAction(R.drawable.ic_overlay, "Overlay") { },
-                        ToolbarAction(R.drawable.ic_ratio, "Ratio") { },
+                        ToolbarAction(R.drawable.ic_ratio, "Ratio") {
+                            scope.launch {
+                                val updated = currentProject.copy(
+                                    resolution = if (currentProject.resolution == "youtube") "tiktok" else "youtube"
+                                )
+                                dao.updateProject(updated)
+                                project = updated
+                            }
+                        },
                         ToolbarAction(R.drawable.ic_background, "Background") { }
                     )
                 )
@@ -330,11 +390,13 @@ fun TimelineScreen(
 private fun PreviewPlayer(
     project: AutoGenProjectEntity,
     timeline: List<TimelineImage>,
-    totalMs: Long
+    totalMs: Long,
+    isPlaying: Boolean,
+    onIsPlayingChange: (Boolean) -> Unit,
+    onTogglePlayPauseReady: (() -> Unit) -> Unit
 ) {
     val context = LocalContext.current
     var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
-    var isPlaying by remember { mutableStateOf(false) }
     var isPrepared by remember { mutableStateOf(false) }
     var positionMs by remember { mutableStateOf(0L) }
     var isScrubbing by remember { mutableStateOf(false) }
@@ -347,7 +409,7 @@ private fun PreviewPlayer(
                     setDataSource(context, Uri.parse(uriString))
                     setOnPreparedListener { isPrepared = true }
                     setOnCompletionListener {
-                        isPlaying = false
+                        onIsPlayingChange(false)
                         positionMs = 0L
                         seekTo(0)
                     }
@@ -364,6 +426,20 @@ private fun PreviewPlayer(
             isPrepared = false
         }
     }
+
+    val togglePlayPause: () -> Unit = {
+        val mp = mediaPlayer
+        if (mp != null && isPrepared) {
+            if (isPlaying) {
+                mp.pause()
+                onIsPlayingChange(false)
+            } else {
+                mp.start()
+                onIsPlayingChange(true)
+            }
+        }
+    }
+    SideEffect { onTogglePlayPauseReady(togglePlayPause) }
 
     // Poll playback position while playing (MediaPlayer has no position-change callback).
     LaunchedEffect(isPlaying) {
@@ -424,36 +500,6 @@ private fun PreviewPlayer(
                 colors = SliderDefaults.colors(thumbColor = CyanPrimary, activeTrackColor = CyanPrimary),
                 modifier = Modifier.fillMaxWidth()
             )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TextButton(
-                    onClick = {
-                        val mp = mediaPlayer ?: return@TextButton
-                        if (!isPrepared) return@TextButton
-                        if (isPlaying) {
-                            mp.pause()
-                            isPlaying = false
-                        } else {
-                            mp.start()
-                            isPlaying = true
-                        }
-                    }
-                ) {
-                    Text(
-                        text = if (isPlaying) "⏸ Pause" else "▶ Play",
-                        color = CyanPrimary,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                Text(
-                    text = "${formatMs(positionMs)} / ${formatMs(totalMs)}",
-                    color = TextSecondary,
-                    fontSize = 12.sp
-                )
-            }
         }
     }
 }

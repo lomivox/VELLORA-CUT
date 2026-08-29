@@ -33,6 +33,9 @@ interface AutoGenDao {
     @Query("SELECT * FROM autogen_prompts WHERE projectId = :projectId ORDER BY orderIndex ASC")
     fun observePrompts(projectId: Long): Flow<List<PromptEntity>>
 
+    @Query("SELECT * FROM autogen_prompts WHERE projectId = :projectId AND status != 'done' ORDER BY orderIndex ASC")
+    suspend fun getRemainingPrompts(projectId: Long): List<PromptEntity>
+
     @Query("SELECT COUNT(*) FROM autogen_prompts WHERE projectId = :projectId")
     suspend fun countPrompts(projectId: Long): Int
 }

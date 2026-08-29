@@ -13,6 +13,7 @@ import com.vellora.cut.ui.theme.BackgroundDark
 private sealed class AutoGenScreen {
     object ProjectList : AutoGenScreen()
     object NewProject : AutoGenScreen()
+    object Settings : AutoGenScreen()
     data class PromptPaste(val projectId: Long) : AutoGenScreen()
 }
 
@@ -32,7 +33,8 @@ fun AutoGenHomeScreen(onBack: () -> Unit) {
                 db = db,
                 onBack = onBack,
                 onNewProject = { screen = AutoGenScreen.NewProject },
-                onOpenProject = { id -> screen = AutoGenScreen.PromptPaste(id) }
+                onOpenProject = { id -> screen = AutoGenScreen.PromptPaste(id) },
+                onOpenSettings = { screen = AutoGenScreen.Settings }
             )
 
             is AutoGenScreen.NewProject -> NewAutoGenProjectScreen(
@@ -41,10 +43,15 @@ fun AutoGenHomeScreen(onBack: () -> Unit) {
                 onCreated = { id -> screen = AutoGenScreen.PromptPaste(id) }
             )
 
+            is AutoGenScreen.Settings -> SettingsScreen(
+                onBack = { screen = AutoGenScreen.ProjectList }
+            )
+
             is AutoGenScreen.PromptPaste -> PromptPasteScreen(
                 db = db,
                 projectId = current.projectId,
-                onBack = { screen = AutoGenScreen.ProjectList }
+                onBack = { screen = AutoGenScreen.ProjectList },
+                onOpenSettings = { screen = AutoGenScreen.Settings }
             )
         }
     }

@@ -23,7 +23,8 @@ fun AutoGenProjectListScreen(
     db: AppDatabase,
     onBack: () -> Unit,
     onNewProject: () -> Unit,
-    onOpenProject: (Long) -> Unit
+    onOpenProject: (Long) -> Unit,
+    onOpenSettings: () -> Unit
 ) {
     val projects by db.autoGenDao().observeProjects()
         .collectAsState(initial = emptyList())
@@ -49,7 +50,9 @@ fun AutoGenProjectListScreen(
                     letterSpacing = 2.sp
                 )
                 Spacer(modifier = Modifier.weight(1f))
-                Spacer(modifier = Modifier.width(48.dp)) // balance the back button
+                TextButton(onClick = onOpenSettings) {
+                    Text(text = "⚙️", fontSize = 16.sp)
+                }
             }
         },
         floatingActionButton = {

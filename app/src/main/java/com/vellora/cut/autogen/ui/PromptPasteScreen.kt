@@ -8,16 +8,25 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import androidx.work.workDataOf
 import com.vellora.cut.autogen.data.AutoGenDao
 import com.vellora.cut.autogen.data.PromptEntity
 import com.vellora.cut.autogen.data.PromptStatus
+import com.vellora.cut.autogen.data.SecureCredentialStore
+import com.vellora.cut.autogen.work.GenerateImagesWorker
 import com.vellora.cut.data.AppDatabase
 import com.vellora.cut.ui.theme.*
 import kotlinx.coroutines.launch
@@ -31,10 +40,14 @@ import kotlinx.coroutines.launch
 fun PromptPasteScreen(
     db: AppDatabase,
     projectId: Long,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onOpenSettings: () -> Unit
 ) {
+    val context = LocalContext.current
     val dao = db.autoGenDao()
     val scope = rememberCoroutineScope()
+    val credentials = remember { SecureCredentialStore(context) }
+    val workManager = remember { WorkManager.getInstance(context) }
 
     val existingPrompts by dao.observePrompts(projectId).collectAsState(initial = emptyList())
 
@@ -62,6 +75,56 @@ fun PromptPasteScreen(
             if (existingPrompts.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
                 StatusSummary(existingPrompts)
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                val remainingCount = existingPrompts.count { it.status != PromptStatus.DONE }
+                val workInfos by workManager
+                    .getWorkInfosForUniqueWorkLiveData(GenerateImagesWorker.uniqueWorkName(projectId))
+                    .observeAsState(initial = emptyList())
+                val isRunning = workInfos.any { it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED }
+
+                if (!credentials.hasCredentials()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = "⚠️ Cloudflare credentials set نہیں ہیں — ", color = TextSecondary, fontSize = 12.sp)
+                        TextButton(onClick = onOpenSettings) {
+                            Text(text = "Settings کھولیں", color = CyanPrimary, fontSize = 12.sp)
+                        }
+                    }
+                } else {
+                    Button(
+                        onClick = {
+                            val request = OneTimeWorkRequestBuilder<GenerateImagesWorker>()
+                                .setInputData(workDataOf(GenerateImagesWorker.KEY_PROJECT_ID to projectId))
+                                .build()
+                            workManager.enqueueUniqueWork(
+                                GenerateImagesWorker.uniqueWorkName(projectId),
+                                ExistingWorkPolicy.KEEP,
+                                request
+                            )
+                        },
+                        enabled = remainingCount > 0 && !isRunning,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
+                    ) {
+                        Text(
+                            text = when {
+                                isRunning -> "Generating…"
+                                remainingCount == 0 -> "All images done ✅"
+                                else -> "Generate All ($remainingCount remaining)"
+                            },
+                            color = BackgroundDark
+                        )
+                    }
+                    if (isRunning) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "پس منظر میں چل رہا ہے — آپ اس اسکرین سے جا بھی سکتے ہیں",
+                            color = TextSecondary,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))

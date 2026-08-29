@@ -89,6 +89,14 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
 
+    // Phase F: FFmpeg render (images + voice-over -> mp4).
+    // Original com.arthenica:ffmpeg-kit-* was retired in 2025 and pulled from
+    // Maven Central. This is the "min" (LGPL-3.0, no GPL libs) package,
+    // rebuilt for the 16KB page-size requirement Google Play now enforces —
+    // safe to use even after this app goes on the Play Store.
+    // https://github.com/moizhassankh/ffmpeg-kit-android-16KB
+    implementation("com.moizhassan.ffmpeg:ffmpeg-kit-16kb:6.1.1")
+
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
 }

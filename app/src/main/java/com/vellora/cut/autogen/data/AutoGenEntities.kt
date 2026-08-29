@@ -30,7 +30,9 @@ data class AutoGenProjectEntity(
     val status: String,
     val createdAt: Long,
     /** How image durations reconcile against the voice-over length: "scale" or "hold_last". */
-    val timelineMode: String = TimelineMode.SCALE
+    val timelineMode: String = TimelineMode.SCALE,
+    /** Local file path of the last successful render (Phase F), null until rendered once. */
+    val renderedFilePath: String? = null
 )
 
 /** Values for [AutoGenProjectEntity.timelineMode]. */

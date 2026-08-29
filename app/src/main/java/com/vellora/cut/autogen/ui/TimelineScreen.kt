@@ -1,5 +1,6 @@
 package com.vellora.cut.autogen.ui
 
+import android.content.Intent
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -13,20 +14,34 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import com.vellora.cut.autogen.data.AutoGenProjectEntity
+import com.vellora.cut.autogen.data.AutoGenProjectStatus
 import com.vellora.cut.autogen.data.PromptStatus
 import com.vellora.cut.autogen.data.TimelineMode
+import com.vellora.cut.autogen.render.RenderEngine
+import com.vellora.cut.autogen.render.RenderResult
 import com.vellora.cut.autogen.timeline.TimelineImage
 import com.vellora.cut.autogen.timeline.computeTimeline
 import com.vellora.cut.autogen.timeline.totalDurationMs
 import com.vellora.cut.data.AppDatabase
 import com.vellora.cut.ui.theme.*
 import kotlinx.coroutines.launch
+import java.io.File
+
+/** UI state for the Phase F render flow. */
+private sealed class RenderUiState {
+    object Idle : RenderUiState()
+    data class Rendering(val progress: Float) : RenderUiState()
+    data class Done(val file: File) : RenderUiState()
+    data class Error(val message: String) : RenderUiState()
+}
 
 @Composable
 fun TimelineScreen(
@@ -36,8 +51,10 @@ fun TimelineScreen(
 ) {
     val dao = db.autoGenDao()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     var project by remember { mutableStateOf<AutoGenProjectEntity?>(null) }
+    var renderState by remember { mutableStateOf<RenderUiState>(RenderUiState.Idle) }
     val allPrompts by dao.observePrompts(projectId).collectAsState(initial = emptyList())
     val doneImages = remember(allPrompts) {
         allPrompts.filter { it.status == PromptStatus.DONE }.sortedBy { it.orderIndex }
@@ -136,12 +153,123 @@ fun TimelineScreen(
                 item { Spacer(modifier = Modifier.height(12.dp)) }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "Render (Phase F) اگلا مرحلہ ہے — یہاں سے FFmpeg سے mp4 بنے گا",
-                color = TextSecondary,
-                fontSize = 11.sp
+            Spacer(modifier = Modifier.height(12.dp))
+            RenderSection(
+                state = renderState,
+                onRenderClick = {
+                    renderState = RenderUiState.Rendering(0f)
+                    RenderEngine.render(
+                        context = context,
+                        project = currentProject,
+                        timeline = timeline,
+                        totalDurationMs = totalMs,
+                        onProgress = { fraction ->
+                            renderState = RenderUiState.Rendering(fraction)
+                        },
+                        onComplete = { result ->
+                            when (result) {
+                                is RenderResult.Success -> {
+                                    renderState = RenderUiState.Done(result.outputFile)
+                                    scope.launch {
+                                        val updated = currentProject.copy(
+                                            status = AutoGenProjectStatus.RENDERED,
+                                            renderedFilePath = result.outputFile.absolutePath
+                                        )
+                                        dao.updateProject(updated)
+                                        project = updated
+                                    }
+                                }
+                                is RenderResult.Failed -> {
+                                    renderState = RenderUiState.Error(result.message)
+                                }
+                            }
+                        }
+                    )
+                },
+                onShareClick = { file ->
+                    val uri = FileProvider.getUriForFile(
+                        context, "${context.packageName}.fileprovider", file
+                    )
+                    val intent = Intent(Intent.ACTION_SEND).apply {
+                        type = "video/mp4"
+                        putExtra(Intent.EXTRA_STREAM, uri)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(Intent.createChooser(intent, "Episode share karein"))
+                }
             )
+        }
+    }
+}
+
+@Composable
+private fun RenderSection(
+    state: RenderUiState,
+    onRenderClick: () -> Unit,
+    onShareClick: (File) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(SurfaceDark)
+            .padding(14.dp)
+    ) {
+        when (state) {
+            is RenderUiState.Idle -> {
+                Button(
+                    onClick = onRenderClick,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
+                ) {
+                    Text(text = "Render → mp4", color = BackgroundDark, fontWeight = FontWeight.Bold)
+                }
+            }
+            is RenderUiState.Rendering -> {
+                Text(text = "Render ho raha hai…", color = TextPrimary, fontSize = 13.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+                LinearProgressIndicator(
+                    progress = { state.progress },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = CyanPrimary,
+                    trackColor = BackgroundDark
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "${(state.progress * 100).toInt()}%",
+                    color = TextSecondary,
+                    fontSize = 11.sp
+                )
+            }
+            is RenderUiState.Done -> {
+                Text(text = "✅ Render مکمل", color = CyanPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(text = state.file.name, color = TextSecondary, fontSize = 11.sp)
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(
+                        onClick = { onShareClick(state.file) },
+                        colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
+                    ) {
+                        Text(text = "Share", color = BackgroundDark, fontWeight = FontWeight.Bold)
+                    }
+                    OutlinedButton(onClick = onRenderClick) {
+                        Text(text = "دوبارہ Render", color = TextPrimary)
+                    }
+                }
+            }
+            is RenderUiState.Error -> {
+                Text(text = "❌ Render fail ہوا", color = Color(0xFFFF6B6B), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(text = state.message, color = TextSecondary, fontSize = 11.sp)
+                Spacer(modifier = Modifier.height(10.dp))
+                Button(
+                    onClick = onRenderClick,
+                    colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
+                ) {
+                    Text(text = "دوبارہ کوشش کریں", color = BackgroundDark, fontWeight = FontWeight.Bold)
+                }
+            }
         }
     }
 }

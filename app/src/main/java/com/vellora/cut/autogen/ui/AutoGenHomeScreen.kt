@@ -1,5 +1,6 @@
 package com.vellora.cut.autogen.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -27,6 +28,20 @@ fun AutoGenHomeScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val db = remember { AppDatabase.getInstance(context) }
     var screen by remember { mutableStateOf<AutoGenScreen>(AutoGenScreen.ProjectList) }
+
+    // ProjectList AutoGenerator ki apni "root" hai — us par back-button ye
+    // handler chorr deta hai (enabled=false), taake bahar wala MainActivity
+    // handler chal kar Hub par le jaye. Baqi sab screens par ye khud
+    // ek qadam peeche le jata hai.
+    BackHandler(enabled = screen !is AutoGenScreen.ProjectList) {
+        screen = when (val current = screen) {
+            is AutoGenScreen.NewProject -> AutoGenScreen.ProjectList
+            is AutoGenScreen.Settings -> AutoGenScreen.ProjectList
+            is AutoGenScreen.PromptPaste -> AutoGenScreen.ProjectList
+            is AutoGenScreen.Timeline -> AutoGenScreen.PromptPaste(current.projectId)
+            is AutoGenScreen.ProjectList -> current
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(BackgroundDark)) {
         when (val current = screen) {

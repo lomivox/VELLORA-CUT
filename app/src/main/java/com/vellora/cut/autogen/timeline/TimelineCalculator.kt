@@ -58,3 +58,9 @@ fun computeTimeline(
 }
 
 fun totalDurationMs(images: List<TimelineImage>): Long = images.sumOf { it.durationMs }
+
+/** Cumulative start time (ms) of each image, in the same order as [images]. */
+fun timelineStartOffsets(images: List<TimelineImage>): List<Long> {
+    var acc = 0L
+    return images.map { val start = acc; acc += it.durationMs; start }
+}

@@ -10,14 +10,12 @@ import com.vellora.cut.autogen.data.PromptEntity
 
 @Database(
     entities = [
-        ProjectEntity::class, ClipEntity::class, KeyframeEntity::class,
         AutoGenProjectEntity::class, PromptEntity::class
     ],
-    version = 3, // v3: added transitionType + motionEffect (Phase F transitions/effects)
+    version = 4, // v4: removed old Editor's unused entities (ProjectEntity/ClipEntity/KeyframeEntity)
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
-    // Editor DAOs added in Phase 1 once timeline editing lands
     abstract fun autoGenDao(): AutoGenDao
 
     companion object {

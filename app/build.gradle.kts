@@ -45,19 +45,6 @@ android {
         compose = true
     }
 
-    // NATIVE (C++/NDK) BUILD — only enabled when running in CI
-    // (GitHub Actions sets CI=true automatically). Local Termux
-    // builds skip this block entirely, so no local NDK is needed.
-    if (System.getenv("CI") != null) {
-        ndkVersion = "27.2.12479018"
-        externalNativeBuild {
-            cmake {
-                path = file("src/main/cpp/CMakeLists.txt")
-                version = "3.22.1"
-            }
-        }
-    }
-
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"

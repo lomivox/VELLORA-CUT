@@ -21,7 +21,6 @@ import com.vellora.cut.ui.theme.*
 @Composable
 fun AutoGenProjectListScreen(
     db: AppDatabase,
-    onBack: () -> Unit,
     onNewProject: () -> Unit,
     onOpenProject: (Long) -> Unit,
     onOpenSettings: () -> Unit
@@ -38,12 +37,8 @@ fun AutoGenProjectListScreen(
                     .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                TextButton(onClick = onBack) {
-                    Text(text = "← Hub", color = TextSecondary, fontSize = 13.sp)
-                }
-                Spacer(modifier = Modifier.weight(1f))
                 Text(
-                    text = "AUTO GENERATOR",
+                    text = "VELLORA",
                     color = CyanPrimary,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,

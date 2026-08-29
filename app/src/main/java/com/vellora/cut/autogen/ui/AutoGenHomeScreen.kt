@@ -20,19 +20,20 @@ private sealed class AutoGenScreen {
 }
 
 /**
- * Entry point for the Auto Generator project. Manages its own small
- * navigation stack; [onBack] returns to the app Hub.
+ * Entry point (and now the app's only project) for Auto Generator. Manages
+ * its own small navigation stack; there is no Hub above this anymore —
+ * the hardware back button at the ProjectList root falls through to the
+ * system default (exits the app), since no BackHandler is registered here
+ * at that point (see the `enabled` condition below).
  */
 @Composable
-fun AutoGenHomeScreen(onBack: () -> Unit) {
+fun AutoGenHomeScreen() {
     val context = LocalContext.current
     val db = remember { AppDatabase.getInstance(context) }
     var screen by remember { mutableStateOf<AutoGenScreen>(AutoGenScreen.ProjectList) }
 
-    // ProjectList AutoGenerator ki apni "root" hai — us par back-button ye
-    // handler chorr deta hai (enabled=false), taake bahar wala MainActivity
-    // handler chal kar Hub par le jaye. Baqi sab screens par ye khud
-    // ek qadam peeche le jata hai.
+    // ProjectList is now the app's true root — back-button handling here
+    // is disabled at that point, so the system default (exit app) applies.
     BackHandler(enabled = screen !is AutoGenScreen.ProjectList) {
         screen = when (val current = screen) {
             is AutoGenScreen.NewProject -> AutoGenScreen.ProjectList
@@ -47,7 +48,6 @@ fun AutoGenHomeScreen(onBack: () -> Unit) {
         when (val current = screen) {
             is AutoGenScreen.ProjectList -> AutoGenProjectListScreen(
                 db = db,
-                onBack = onBack,
                 onNewProject = { screen = AutoGenScreen.NewProject },
                 onOpenProject = { id -> screen = AutoGenScreen.PromptPaste(id) },
                 onOpenSettings = { screen = AutoGenScreen.Settings }

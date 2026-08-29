@@ -36,7 +36,7 @@ fun NewAutoGenProjectScreen(
     var voiceOverUri by remember { mutableStateOf<String?>(null) }
     var voiceOverDurationMs by remember { mutableLongStateOf(0L) }
     var imageDurationSec by remember { mutableStateOf("5") }
-    var resolution by remember { mutableStateOf("1080p") }
+    var resolution by remember { mutableStateOf("youtube") }
     var saving by remember { mutableStateOf(false) }
 
     val voiceOverLauncher = rememberLauncherForActivityResult(
@@ -138,13 +138,16 @@ fun NewAutoGenProjectScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            FieldLabel("Resolution")
+            FieldLabel("Video Size")
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                listOf("1080p", "720p").forEach { option ->
+                listOf(
+                    "youtube" to "YouTube (1920×1080)",
+                    "tiktok" to "TikTok (1080×1920)"
+                ).forEach { (value, label) ->
                     ResolutionChip(
-                        label = option,
-                        selected = resolution == option,
-                        onClick = { resolution = option }
+                        label = label,
+                        selected = resolution == value,
+                        onClick = { resolution = value }
                     )
                 }
             }

@@ -13,7 +13,7 @@ import com.vellora.cut.autogen.data.PromptEntity
         ProjectEntity::class, ClipEntity::class, KeyframeEntity::class,
         AutoGenProjectEntity::class, PromptEntity::class
     ],
-    version = 2, // v2: added AutoGenProjectEntity.renderedFilePath (Phase F)
+    version = 3, // v3: added transitionType + motionEffect (Phase F transitions/effects)
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

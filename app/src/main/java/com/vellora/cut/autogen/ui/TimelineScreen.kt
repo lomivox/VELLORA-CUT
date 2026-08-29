@@ -23,8 +23,10 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.vellora.cut.autogen.data.AutoGenProjectEntity
 import com.vellora.cut.autogen.data.AutoGenProjectStatus
+import com.vellora.cut.autogen.data.MotionEffect
 import com.vellora.cut.autogen.data.PromptStatus
 import com.vellora.cut.autogen.data.TimelineMode
+import com.vellora.cut.autogen.data.TransitionType
 import com.vellora.cut.autogen.render.RenderEngine
 import com.vellora.cut.autogen.render.RenderResult
 import com.vellora.cut.autogen.timeline.TimelineImage
@@ -134,6 +136,64 @@ fun TimelineScreen(
                     onClick = {
                         scope.launch {
                             val updated = currentProject.copy(timelineMode = TimelineMode.HOLD_LAST)
+                            dao.updateProject(updated)
+                            project = updated
+                        }
+                    }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(text = "Transition", color = TextSecondary, fontSize = 12.sp)
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                ModeChip(
+                    label = "Crossfade",
+                    selected = currentProject.transitionType == TransitionType.CROSSFADE,
+                    onClick = {
+                        scope.launch {
+                            val updated = currentProject.copy(transitionType = TransitionType.CROSSFADE)
+                            dao.updateProject(updated)
+                            project = updated
+                        }
+                    }
+                )
+                ModeChip(
+                    label = "Slide",
+                    selected = currentProject.transitionType == TransitionType.SLIDE,
+                    onClick = {
+                        scope.launch {
+                            val updated = currentProject.copy(transitionType = TransitionType.SLIDE)
+                            dao.updateProject(updated)
+                            project = updated
+                        }
+                    }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(text = "Motion Effect", color = TextSecondary, fontSize = 12.sp)
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                ModeChip(
+                    label = "Zoom-In",
+                    selected = currentProject.motionEffect == MotionEffect.ZOOM_IN,
+                    onClick = {
+                        scope.launch {
+                            val updated = currentProject.copy(motionEffect = MotionEffect.ZOOM_IN)
+                            dao.updateProject(updated)
+                            project = updated
+                        }
+                    }
+                )
+                ModeChip(
+                    label = "Pan",
+                    selected = currentProject.motionEffect == MotionEffect.PAN,
+                    onClick = {
+                        scope.launch {
+                            val updated = currentProject.copy(motionEffect = MotionEffect.PAN)
                             dao.updateProject(updated)
                             project = updated
                         }

@@ -109,7 +109,7 @@ private fun ProjectRow(project: AutoGenProjectEntity, onClick: () -> Unit) {
             Text(text = project.name, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "${project.resolution} · ${project.imageDurationSec}s/image · ${statusLabel(project.status)}",
+                text = "${resolutionLabel(project.resolution)} · ${project.imageDurationSec}s/image · ${statusLabel(project.status)}",
                 color = TextSecondary,
                 fontSize = 12.sp
             )
@@ -124,4 +124,11 @@ private fun statusLabel(status: String): String = when (status) {
     "ready" -> "Ready"
     "rendered" -> "Rendered"
     else -> status
+}
+
+private fun resolutionLabel(resolution: String): String = when (resolution) {
+    "tiktok" -> "TikTok (1080×1920)"
+    "youtube" -> "YouTube (1920×1080)"
+    "720p", "1080p" -> resolution // legacy saved projects, from before this option existed
+    else -> resolution
 }

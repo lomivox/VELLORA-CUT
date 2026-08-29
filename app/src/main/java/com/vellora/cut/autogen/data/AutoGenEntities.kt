@@ -32,7 +32,11 @@ data class AutoGenProjectEntity(
     /** How image durations reconcile against the voice-over length: "scale" or "hold_last". */
     val timelineMode: String = TimelineMode.SCALE,
     /** Local file path of the last successful render (Phase F), null until rendered once. */
-    val renderedFilePath: String? = null
+    val renderedFilePath: String? = null,
+    /** Transition style between consecutive images — see [TransitionType]. */
+    val transitionType: String = TransitionType.CROSSFADE,
+    /** Per-image motion effect — see [MotionEffect]. */
+    val motionEffect: String = MotionEffect.ZOOM_IN
 )
 
 /** Values for [AutoGenProjectEntity.timelineMode]. */
@@ -41,6 +45,22 @@ object TimelineMode {
     const val SCALE = "scale"
     /** Every image keeps its set duration; only the last image absorbs the remainder. */
     const val HOLD_LAST = "hold_last"
+}
+
+/** Values for [AutoGenProjectEntity.transitionType] — how one image hands off to the next. */
+object TransitionType {
+    /** One image fades out while the next fades in, overlapping. */
+    const val CROSSFADE = "crossfade"
+    /** The next image slides in from the right, pushing the current one out. */
+    const val SLIDE = "slide"
+}
+
+/** Values for [AutoGenProjectEntity.motionEffect] — subtle movement applied to every still image. */
+object MotionEffect {
+    /** Slow, continuous zoom-in over the image's on-screen duration (classic Ken Burns). */
+    const val ZOOM_IN = "zoom_in"
+    /** Fixed slight zoom, camera pans left-to-right across the image. */
+    const val PAN = "pan"
 }
 
 @Entity(tableName = "autogen_prompts")

@@ -410,8 +410,6 @@ private fun PreviewPlayer(
                     setOnPreparedListener { isPrepared = true }
                     setOnCompletionListener {
                         onIsPlayingChange(false)
-                        positionMs = 0L
-                        seekTo(0)
                     }
                     prepareAsync()
                 }
@@ -427,27 +425,47 @@ private fun PreviewPlayer(
         }
     }
 
+    // Play/Pause works whether or not a voice-over is attached: with audio, the
+    // MediaPlayer drives it (and the slideshow follows its position); without
+    // audio, this runs off its own wall-clock timer so preview never depends
+    // on audio being present.
     val togglePlayPause: () -> Unit = {
         val mp = mediaPlayer
-        if (mp != null && isPrepared) {
-            if (isPlaying) {
-                mp.pause()
-                onIsPlayingChange(false)
-            } else {
-                mp.start()
-                onIsPlayingChange(true)
+        if (isPlaying) {
+            mp?.takeIf { isPrepared }?.pause()
+            onIsPlayingChange(false)
+        } else {
+            if (positionMs >= totalMs) {
+                positionMs = 0L
             }
+            mp?.takeIf { isPrepared }?.let { it.seekTo(positionMs.toInt()); it.start() }
+            onIsPlayingChange(true)
         }
     }
     SideEffect { onTogglePlayPauseReady(togglePlayPause) }
 
-    // Poll playback position while playing (MediaPlayer has no position-change callback).
+    // Advance the position while playing — synced to the audio player's
+    // position when one exists and is ready, otherwise driven by elapsed
+    // real time so the image slideshow always plays.
     LaunchedEffect(isPlaying) {
+        var lastTickMs = System.currentTimeMillis()
         while (isPlaying) {
+            val now = System.currentTimeMillis()
+            val elapsed = now - lastTickMs
+            lastTickMs = now
             if (!isScrubbing) {
-                mediaPlayer?.let { positionMs = it.currentPosition.toLong() }
+                val mp = mediaPlayer
+                positionMs = if (mp != null && isPrepared) {
+                    mp.currentPosition.toLong()
+                } else {
+                    (positionMs + elapsed).coerceAtMost(totalMs)
+                }
+                if (positionMs >= totalMs) {
+                    onIsPlayingChange(false)
+                    positionMs = 0L
+                }
             }
-            delay(80)
+            delay(40)
         }
     }
 
@@ -494,7 +512,7 @@ private fun PreviewPlayer(
                     positionMs = value.toLong()
                 },
                 onValueChangeFinished = {
-                    mediaPlayer?.seekTo(positionMs.toInt())
+                    mediaPlayer?.takeIf { isPrepared }?.seekTo(positionMs.toInt())
                     isScrubbing = false
                 },
                 colors = SliderDefaults.colors(thumbColor = CyanPrimary, activeTrackColor = CyanPrimary),

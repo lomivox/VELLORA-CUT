@@ -127,7 +127,7 @@ fun TimelineScreen(
                     trailingActions = {
                         Button(
                             onClick = { startRender?.invoke() },
-                            enabled = startRender != null && renderState !is RenderUiState.Rendering,
+                            enabled = startRender != null && renderState !is RenderUiState.Rendering && doneImages.isNotEmpty(),
                             shape = RoundedCornerShape(20.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary),
                             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp)
@@ -145,16 +145,8 @@ fun TimelineScreen(
                 return@Column
             }
 
-            if (doneImages.isEmpty()) {
-                Box(modifier = Modifier.fillMaxWidth().weight(1f).padding(20.dp), contentAlignment = Alignment.Center) {
-                    Text(
-                        text = "ابھی کوئی image تیار نہیں — پہلے Prompts screen پر جا کر Generate All چلائیں",
-                        color = TextSecondary,
-                        fontSize = 13.sp
-                    )
-                }
-                return@Column
-            }
+            // (no standalone notice here — folded into the Timeline section below,
+            // right above the images list, so the 5-section proportions stay exact)
 
             val baseDurationMs = currentProject.imageDurationSec * 1000L
             val voiceOverMs = currentProject.voiceOverDurationMs
@@ -291,6 +283,14 @@ fun TimelineScreen(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Text(text = "Images (${timeline.size})", color = TextSecondary, fontSize = 12.sp)
+                if (doneImages.isEmpty()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "ابھی کوئی image تیار نہیں — پہلے Prompts screen پر جا کر Generate All چلائیں",
+                        color = TextSecondary,
+                        fontSize = 11.sp
+                    )
+                }
                 Spacer(modifier = Modifier.height(8.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     timeline.forEach { item ->
@@ -335,6 +335,7 @@ fun TimelineScreen(
                 RenderSection(
                     state = renderState,
                     onRenderClick = triggerRender,
+                    enabled = doneImages.isNotEmpty(),
                     onShareClick = { file ->
                         val uri = FileProvider.getUriForFile(
                             context, "${context.packageName}.fileprovider", file
@@ -546,7 +547,8 @@ private fun max(a: Long, b: Long): Long = if (a > b) a else b
 private fun RenderSection(
     state: RenderUiState,
     onRenderClick: () -> Unit,
-    onShareClick: (File) -> Unit
+    onShareClick: (File) -> Unit,
+    enabled: Boolean = true
 ) {
     Column(
         modifier = Modifier
@@ -559,6 +561,7 @@ private fun RenderSection(
             is RenderUiState.Idle -> {
                 Button(
                     onClick = onRenderClick,
+                    enabled = enabled,
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
                 ) {

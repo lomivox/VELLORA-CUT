@@ -15,18 +15,53 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vellora.cut.autogen.data.AutoGenProjectEntity
+import com.vellora.cut.autogen.data.AutoGenProjectStatus
 import com.vellora.cut.data.AppDatabase
 import com.vellora.cut.ui.theme.*
+import kotlinx.coroutines.launch
 
 @Composable
 fun AutoGenProjectListScreen(
     db: AppDatabase,
     onNewProject: () -> Unit,
     onOpenProject: (Long) -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onOpenTimeline: (Long) -> Unit
 ) {
-    val projects by db.autoGenDao().observeProjects()
+    val dao = db.autoGenDao()
+    val scope = rememberCoroutineScope()
+    val projects by dao.observeProjects()
         .collectAsState(initial = emptyList())
+    var openingPreview by remember { mutableStateOf(false) }
+
+    // Always reachable, even with zero projects: jump straight to the most
+    // recent project's Timeline/Preview screen, or create a blank throwaway
+    // project first if none exist yet.
+    val openPreview: () -> Unit = {
+        if (!openingPreview) {
+            val existing = projects.firstOrNull()
+            if (existing != null) {
+                onOpenTimeline(existing.id)
+            } else {
+                openingPreview = true
+                scope.launch {
+                    val id = dao.insertProject(
+                        AutoGenProjectEntity(
+                            name = "Preview",
+                            voiceOverUri = null,
+                            voiceOverDurationMs = 0L,
+                            imageDurationSec = 5,
+                            resolution = "youtube",
+                            status = AutoGenProjectStatus.DRAFT,
+                            createdAt = System.currentTimeMillis()
+                        )
+                    )
+                    openingPreview = false
+                    onOpenTimeline(id)
+                }
+            }
+        }
+    }
 
     Scaffold(
         containerColor = BackgroundDark,
@@ -45,6 +80,14 @@ fun AutoGenProjectListScreen(
                     letterSpacing = 2.sp
                 )
                 Spacer(modifier = Modifier.weight(1f))
+                TextButton(onClick = openPreview, enabled = !openingPreview) {
+                    Text(
+                        text = if (openingPreview) "…" else "Preview",
+                        color = CyanPrimary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
                 TextButton(onClick = onOpenSettings) {
                     Text(text = "⚙️", fontSize = 16.sp)
                 }

@@ -85,6 +85,16 @@ fun PromptPasteScreen(
                     .observeAsState(initial = emptyList())
                 val isRunning = workInfos.any { it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED }
 
+                // Auto-jump to Timeline the moment generation finishes, so there's
+                // no need to manually tap "Continue" every time after generating.
+                var wasRunning by remember { mutableStateOf(false) }
+                LaunchedEffect(isRunning, remainingCount) {
+                    if (wasRunning && !isRunning && remainingCount == 0) {
+                        onOpenTimeline()
+                    }
+                    wasRunning = isRunning
+                }
+
                 if (!credentials.hasCredentials()) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(text = "⚠️ Cloudflare credentials set نہیں ہیں — ", color = TextSecondary, fontSize = 12.sp)

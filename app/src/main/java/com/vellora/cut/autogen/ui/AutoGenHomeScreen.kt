@@ -50,7 +50,8 @@ fun AutoGenHomeScreen() {
                 db = db,
                 onNewProject = { screen = AutoGenScreen.NewProject },
                 onOpenProject = { id -> screen = AutoGenScreen.PromptPaste(id) },
-                onOpenSettings = { screen = AutoGenScreen.Settings }
+                onOpenSettings = { screen = AutoGenScreen.Settings },
+                onOpenTimeline = { id -> screen = AutoGenScreen.Timeline(id) }
             )
 
             is AutoGenScreen.NewProject -> NewAutoGenProjectScreen(

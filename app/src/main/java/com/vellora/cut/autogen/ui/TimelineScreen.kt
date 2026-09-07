@@ -87,6 +87,7 @@ fun TimelineScreen(
     var project by remember { mutableStateOf<AutoGenProjectEntity?>(null) }
     var renderState by remember { mutableStateOf<RenderUiState>(RenderUiState.Idle) }
     var previewingFile by remember { mutableStateOf<File?>(null) }
+    var editingDurationFor by remember { mutableStateOf<com.vellora.cut.autogen.data.PromptEntity?>(null) }
     val allPrompts by dao.observePrompts(projectId).collectAsState(initial = emptyList())
     val doneImages = remember(allPrompts) {
         allPrompts.filter { it.status == PromptStatus.DONE }.sortedBy { it.orderIndex }
@@ -144,13 +145,30 @@ fun TimelineScreen(
                     iconSize = topBarIconSize,
                     trailingActions = {
                         Button(
-                            onClick = { startRender?.invoke() },
-                            enabled = startRender != null && renderState !is RenderUiState.Rendering && doneImages.isNotEmpty(),
+                            onClick = {
+                                if (renderState is RenderUiState.Done) {
+                                    previewingFile = (renderState as RenderUiState.Done).file
+                                } else {
+                                    startRender?.invoke()
+                                }
+                            },
+                            enabled = startRender != null && doneImages.isNotEmpty() && renderState !is RenderUiState.Rendering,
                             shape = RoundedCornerShape(20.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary),
                             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp)
                         ) {
-                            Text(text = "Export", color = BackgroundDark, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            // Shows the render's actual live status right where the
+                            // person tapped — previously this button gave no feedback
+                            // of its own, so pressing it looked like nothing happened
+                            // while the real progress/result only appeared scrolled
+                            // out of view, far below in the timeline section.
+                            val label = when (val s = renderState) {
+                                is RenderUiState.Idle -> "Export"
+                                is RenderUiState.Rendering -> "Exporting ${(s.progress * 100).toInt()}%"
+                                is RenderUiState.Done -> "✓ Preview"
+                                is RenderUiState.Error -> "⚠ Retry"
+                            }
+                            Text(text = label, color = BackgroundDark, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 )
@@ -313,7 +331,7 @@ fun TimelineScreen(
                 Spacer(modifier = Modifier.height(8.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     timeline.forEach { item ->
-                        TimelineImageRow(item)
+                        TimelineImageRow(item, onEditDuration = { editingDurationFor = item.prompt })
                     }
                 }
 
@@ -405,6 +423,19 @@ fun TimelineScreen(
             RenderedVideoPreviewOverlay(
                 file = previewingFile!!,
                 onClose = { previewingFile = null }
+            )
+        }
+
+        editingDurationFor?.let { prompt ->
+            EditDurationDialog(
+                prompt = prompt,
+                onDismiss = { editingDurationFor = null },
+                onSave = { newDurationMs ->
+                    scope.launch {
+                        dao.updatePrompt(prompt.copy(manualDurationMs = newDurationMs))
+                    }
+                    editingDurationFor = null
+                }
             )
         }
     }
@@ -694,8 +725,9 @@ private fun ModeChip(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun TimelineImageRow(item: TimelineImage) {
+private fun TimelineImageRow(item: TimelineImage, onEditDuration: () -> Unit) {
     val bitmap = rememberDecodedBitmap(item.prompt.imagePath)
+    val isManual = item.prompt.manualDurationMs != null
 
     Row(
         modifier = Modifier
@@ -728,8 +760,90 @@ private fun TimelineImageRow(item: TimelineImage) {
         }
 
         Spacer(modifier = Modifier.width(8.dp))
-        Text(text = formatMs(item.durationMs), color = TextSecondary, fontSize = 12.sp)
+
+        Column(
+            horizontalAlignment = Alignment.End,
+            modifier = Modifier
+                .clip(RoundedCornerShape(6.dp))
+                .clickable(onClick = onEditDuration)
+                .padding(horizontal = 6.dp, vertical = 2.dp)
+        ) {
+            Text(
+                text = formatMs(item.durationMs),
+                color = if (isManual) CyanPrimary else TextSecondary,
+                fontSize = 12.sp,
+                fontWeight = if (isManual) FontWeight.Bold else FontWeight.Normal
+            )
+            Text(
+                text = if (isManual) "manual" else "auto",
+                color = TextSecondary,
+                fontSize = 9.sp
+            )
+        }
     }
+}
+
+/** Dialog to set (or clear) one image's manual duration override. */
+@Composable
+private fun EditDurationDialog(
+    prompt: com.vellora.cut.autogen.data.PromptEntity,
+    onDismiss: () -> Unit,
+    onSave: (Long?) -> Unit
+) {
+    var text by remember {
+        mutableStateOf(prompt.manualDurationMs?.let { (it / 1000.0).toString() } ?: "")
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = "Duration — ${prompt.label}", color = TextPrimary, fontSize = 15.sp) },
+        text = {
+            Column {
+                Text(
+                    text = "سیکنڈز میں لکھیں (مثلاً 4، 6، 10) — خالی چھوڑیں تو یہ image واپس 'auto' ہو جائے گی",
+                    color = TextSecondary,
+                    fontSize = 11.sp
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { input -> text = input.filter { it.isDigit() || it == '.' } },
+                    label = { Text("Seconds") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary,
+                        focusedBorderColor = CyanPrimary,
+                        unfocusedBorderColor = TextSecondary,
+                        cursorColor = CyanPrimary
+                    )
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(4, 6, 8, 10).forEach { seconds ->
+                        OutlinedButton(onClick = { text = seconds.toString() }) {
+                            Text(text = "${seconds}s", fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val seconds = text.toDoubleOrNull()
+                onSave(if (seconds != null && seconds > 0) (seconds * 1000).toLong() else null)
+            }) {
+                Text(text = "Save", color = CyanPrimary, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = "Cancel", color = TextSecondary)
+            }
+        },
+        containerColor = SurfaceDark
+    )
 }
 
 private fun formatMs(ms: Long): String {

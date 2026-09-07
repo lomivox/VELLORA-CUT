@@ -72,5 +72,8 @@ data class PromptEntity(
     val promptText: String,
     val status: String,
     val imagePath: String? = null,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    /** User-set duration override for this image, in ms. Null = automatic
+     * (Scale/Hold-Last sync mode decides it, as before). */
+    val manualDurationMs: Long? = null
 )

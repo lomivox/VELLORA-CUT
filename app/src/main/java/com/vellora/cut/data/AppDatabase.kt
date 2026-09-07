@@ -12,7 +12,7 @@ import com.vellora.cut.autogen.data.PromptEntity
     entities = [
         AutoGenProjectEntity::class, PromptEntity::class
     ],
-    version = 4, // v4: removed old Editor's unused entities (ProjectEntity/ClipEntity/KeyframeEntity)
+    version = 5, // v5: added PromptEntity.manualDurationMs (per-image manual duration override)
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

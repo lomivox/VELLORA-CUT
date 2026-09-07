@@ -22,13 +22,23 @@ import com.vellora.cut.autogen.data.SecureCredentialStore
 import com.vellora.cut.ui.theme.*
 import java.util.UUID
 
-/** One row in the on-screen list — has its own stable key so Compose doesn't
- * mix up text fields when a row in the middle is deleted. */
-private data class AccountRow(
+/**
+ * One row's editable text — each field is its own proper Compose `State`
+ * (via `by mutableStateOf`), NOT a plain `var` on a data class. This is the
+ * fix for the earlier bug: mutating a plain `var` inside a list item does
+ * not reliably notify Compose to redraw that text field, so pasted/typed
+ * text could silently fail to show up (and then "0 accounts" on Save,
+ * since the state genuinely never changed). A delegated `MutableState`
+ * notifies immediately and correctly, every time.
+ */
+private class AccountRowState(
     val key: String = UUID.randomUUID().toString(),
-    var accountId: String,
-    var apiToken: String
-)
+    initialAccountId: String = "",
+    initialApiToken: String = ""
+) {
+    var accountId by mutableStateOf(initialAccountId)
+    var apiToken by mutableStateOf(initialApiToken)
+}
 
 @Composable
 fun SettingsScreen(onBack: () -> Unit) {
@@ -37,11 +47,11 @@ fun SettingsScreen(onBack: () -> Unit) {
 
     val rows = remember {
         val saved = store.accounts
-        mutableStateListOf<AccountRow>().apply {
+        mutableStateListOf<AccountRowState>().apply {
             if (saved.isEmpty()) {
-                add(AccountRow(accountId = "", apiToken = ""))
+                add(AccountRowState())
             } else {
-                saved.forEach { add(AccountRow(accountId = it.accountId, apiToken = it.apiToken)) }
+                saved.forEach { add(AccountRowState(initialAccountId = it.accountId, initialApiToken = it.apiToken)) }
             }
         }
     }
@@ -76,20 +86,21 @@ fun SettingsScreen(onBack: () -> Unit) {
                     .verticalScroll(rememberScrollState())
             ) {
                 rows.forEachIndexed { index, row ->
-                    AccountCard(
-                        index = index,
-                        row = row,
-                        onAccountIdChange = { row.accountId = it; savedMessage = null; rows[index] = row.copy() },
-                        onApiTokenChange = { row.apiToken = it; savedMessage = null; rows[index] = row.copy() },
-                        onDelete = if (rows.size > 1) {
-                            { rows.removeAt(index); savedMessage = null }
-                        } else null
-                    )
+                    key(row.key) {
+                        AccountCard(
+                            index = index,
+                            row = row,
+                            onDelete = if (rows.size > 1) {
+                                { rows.removeAt(index); savedMessage = null }
+                            } else null,
+                            onAnyChange = { savedMessage = null }
+                        )
+                    }
                     Spacer(modifier = Modifier.height(12.dp))
                 }
 
                 OutlinedButton(
-                    onClick = { rows.add(AccountRow(accountId = "", apiToken = "")) },
+                    onClick = { rows.add(AccountRowState()) },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(text = "+ Add Account (${rows.size} so far)", color = CyanPrimary)
@@ -126,10 +137,9 @@ fun SettingsScreen(onBack: () -> Unit) {
 @Composable
 private fun AccountCard(
     index: Int,
-    row: AccountRow,
-    onAccountIdChange: (String) -> Unit,
-    onApiTokenChange: (String) -> Unit,
-    onDelete: (() -> Unit)?
+    row: AccountRowState,
+    onDelete: (() -> Unit)?,
+    onAnyChange: () -> Unit
 ) {
     var showToken by remember { mutableStateOf(false) }
 
@@ -157,7 +167,7 @@ private fun AccountCard(
 
         OutlinedTextField(
             value = row.accountId,
-            onValueChange = { onAccountIdChange(it.trim()) },
+            onValueChange = { row.accountId = it.trim(); onAnyChange() },
             label = { Text("Account ID", fontSize = 11.sp) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
@@ -168,7 +178,7 @@ private fun AccountCard(
 
         OutlinedTextField(
             value = row.apiToken,
-            onValueChange = { onApiTokenChange(it.trim()) },
+            onValueChange = { row.apiToken = it.trim(); onAnyChange() },
             label = { Text("API Token", fontSize = 11.sp) },
             singleLine = true,
             visualTransformation = if (showToken) VisualTransformation.None else PasswordVisualTransformation(),

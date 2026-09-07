@@ -24,18 +24,23 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install NDK + CMake
-        run: |
-          sdkmanager --install "ndk;27.2.12479018" "cmake;3.22.1" --channel=0
-          echo "ndk.dir=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> local.properties
+      # Caches ~/.gradle (downloaded dependencies) and the Gradle build
+      # cache between runs, keyed off gradle files — a run with no
+      # dependency changes reuses everything instead of re-downloading.
+      # NDK/CMake install step removed: the old native C++ engine
+      # (cpp/, NativeEngine.kt) was deleted when the manual Editor was
+      # removed, so nothing in this build needs the NDK toolchain anymore
+      # — ffmpeg-kit's native libraries ship prebuilt, no compiling here.
+      - name: Set up Gradle (with caching)
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build debug APK (Kotlin + native C++ engine)
+      - name: Build debug APK
         run: ./gradlew assembleDebug --no-daemon
 
-      - name: Run unit tests (Engine layer)
+      - name: Run unit tests
         run: ./gradlew testDebugUnitTest --no-daemon
         continue-on-error: true
 

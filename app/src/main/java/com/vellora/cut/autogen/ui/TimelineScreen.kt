@@ -9,6 +9,7 @@ import android.widget.MediaController
 import android.widget.VideoView
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -23,6 +24,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidPath
+import androidx.compose.ui.graphics.asComposePath
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -88,6 +91,7 @@ fun TimelineScreen(
     var renderState by remember { mutableStateOf<RenderUiState>(RenderUiState.Idle) }
     var previewingFile by remember { mutableStateOf<File?>(null) }
     var editingDurationFor by remember { mutableStateOf<com.vellora.cut.autogen.data.PromptEntity?>(null) }
+    var showExportOverlay by remember { mutableStateOf(false) }
     val allPrompts by dao.observePrompts(projectId).collectAsState(initial = emptyList())
     val doneImages = remember(allPrompts) {
         allPrompts.filter { it.status == PromptStatus.DONE }.sortedBy { it.orderIndex }
@@ -149,6 +153,7 @@ fun TimelineScreen(
                                 if (renderState is RenderUiState.Done) {
                                     previewingFile = (renderState as RenderUiState.Done).file
                                 } else {
+                                    showExportOverlay = true
                                     startRender?.invoke()
                                 }
                             },
@@ -338,6 +343,7 @@ fun TimelineScreen(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 val triggerRender: () -> Unit = {
+                    showExportOverlay = true
                     renderState = RenderUiState.Rendering(0f)
                     RenderEngine.render(
                         context = context,
@@ -418,6 +424,27 @@ fun TimelineScreen(
             }
         }
     }
+
+        if (showExportOverlay) {
+            ExportProgressOverlay(
+                renderState = renderState,
+                aspectRatio = if (currentProject?.resolution == "tiktok") 9f / 16f else 16f / 9f,
+                onClose = { showExportOverlay = false },
+                onPreview = { file -> previewingFile = file; showExportOverlay = false },
+                onShare = { file ->
+                    val uri = FileProvider.getUriForFile(
+                        context, "${context.packageName}.fileprovider", file
+                    )
+                    val intent = Intent(Intent.ACTION_SEND).apply {
+                        type = "video/mp4"
+                        putExtra(Intent.EXTRA_STREAM, uri)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(Intent.createChooser(intent, "Episode share karein"))
+                },
+                onRetry = { startRender?.invoke() }
+            )
+        }
 
         if (previewingFile != null) {
             RenderedVideoPreviewOverlay(
@@ -849,6 +876,164 @@ private fun EditDurationDialog(
 private fun formatMs(ms: Long): String {
     val totalSec = ms / 1000.0
     return "%.1fs".format(totalSec)
+}
+
+/**
+ * Full-screen export/render status page. Shows a box shaped like the
+ * output video (portrait for TikTok, landscape for YouTube) with a blue
+ * progress stroke that fills around its border as rendering proceeds, and
+ * the percentage centered inside — like a rectangular version of a
+ * circular loading ring. Reused for the Done (green ring, Preview/Share)
+ * and Error (red ring, retry) outcomes too, so the page never just
+ * vanishes without telling the person what happened.
+ */
+@Composable
+private fun ExportProgressOverlay(
+    renderState: RenderUiState,
+    aspectRatio: Float,
+    onClose: () -> Unit,
+    onPreview: (File) -> Unit,
+    onShare: (File) -> Unit,
+    onRetry: () -> Unit
+) {
+    val progress = when (renderState) {
+        is RenderUiState.Rendering -> renderState.progress
+        is RenderUiState.Done -> 1f
+        else -> 0f
+    }
+    val ringColor = when (renderState) {
+        is RenderUiState.Error -> Color(0xFFFF6B6B)
+        is RenderUiState.Done -> Color(0xFF4CD964)
+        else -> CyanPrimary
+    }
+    val animatedProgress by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = progress,
+        label = "export_progress"
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(BackgroundDark.copy(alpha = 0.98f))
+    ) {
+        IconButton(onClick = onClose, modifier = Modifier.align(Alignment.TopEnd).padding(12.dp)) {
+            Text(text = "✕", color = TextPrimary, fontSize = 22.sp)
+        }
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .padding(32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = when (renderState) {
+                    is RenderUiState.Done -> "✅ Export مکمل"
+                    is RenderUiState.Error -> "⚠ Export ناکام"
+                    else -> "Exporting…"
+                },
+                color = TextPrimary,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.65f)
+                    .aspectRatio(aspectRatio),
+                contentAlignment = Alignment.Center
+            ) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val strokeWidthPx = 8.dp.toPx()
+                    val cornerRadiusPx = 20.dp.toPx()
+                    val inset = strokeWidthPx / 2
+                    val outlinePath = androidx.compose.ui.graphics.Path().apply {
+                        addRoundRect(
+                            androidx.compose.ui.geometry.RoundRect(
+                                left = inset,
+                                top = inset,
+                                right = size.width - inset,
+                                bottom = size.height - inset,
+                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(cornerRadiusPx)
+                            )
+                        )
+                    }
+
+                    // Dim background track showing the full border shape.
+                    drawPath(
+                        outlinePath,
+                        color = Color.White.copy(alpha = 0.12f),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(
+                            width = strokeWidthPx,
+                            cap = androidx.compose.ui.graphics.StrokeCap.Round
+                        )
+                    )
+
+                    // Progress stroke: only the first `progress` fraction of
+                    // the border's perimeter, via PathMeasure (Android
+                    // interop — Compose's own Path has no length/segment
+                    // API), so it visibly "fills around" the box.
+                    val androidPath = outlinePath.asAndroidPath()
+                    val measure = android.graphics.PathMeasure(androidPath, true)
+                    val totalLength = measure.length
+                    if (totalLength > 0f && animatedProgress > 0f) {
+                        val segmentPath = android.graphics.Path()
+                        measure.getSegment(0f, totalLength * animatedProgress.coerceIn(0f, 1f), segmentPath, true)
+                        drawPath(
+                            segmentPath.asComposePath(),
+                            color = ringColor,
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                width = strokeWidthPx,
+                                cap = androidx.compose.ui.graphics.StrokeCap.Round
+                            )
+                        )
+                    }
+                }
+
+                Text(
+                    text = "${(animatedProgress * 100).toInt()}%",
+                    color = TextPrimary,
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Spacer(modifier = Modifier.height(28.dp))
+
+            when (renderState) {
+                is RenderUiState.Done -> {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Button(
+                            onClick = { onPreview(renderState.file) },
+                            colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
+                        ) {
+                            Text(text = "▶ Preview", color = BackgroundDark, fontWeight = FontWeight.Bold)
+                        }
+                        Button(
+                            onClick = { onShare(renderState.file) },
+                            colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
+                        ) {
+                            Text(text = "Share", color = BackgroundDark, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+                is RenderUiState.Error -> {
+                    Text(text = renderState.message, color = TextSecondary, fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Button(
+                        onClick = onRetry,
+                        colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
+                    ) {
+                        Text(text = "دوبارہ کوشش کریں", color = BackgroundDark, fontWeight = FontWeight.Bold)
+                    }
+                }
+                else -> {
+                    Text(text = "Screen بند نہ کریں — رینڈر جاری ہے", color = TextSecondary, fontSize = 12.sp)
+                }
+            }
+        }
+    }
 }
 
 /**

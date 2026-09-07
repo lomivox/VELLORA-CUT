@@ -9,6 +9,22 @@ android {
     namespace = "com.vellora.cut"
     compileSdk = 36
 
+    signingConfigs {
+        // Fixed keystore checked into the repo so every build (GitHub Actions
+        // CI included) is signed with the SAME key. Without this, each CI run
+        // used Gradle's auto-generated debug key (different every time),
+        // which Android refuses to install over an existing copy — forcing
+        // "uninstall + clear data" before every single update. This is a
+        // TESTING-ONLY key; switch to a real Play Store release keystore
+        // (kept private, never committed) before publishing.
+        create("shared") {
+            storeFile = file("keystore/vellora-shared.keystore")
+            storePassword = "vellora123"
+            keyAlias = "vellora"
+            keyPassword = "vellora123"
+        }
+    }
+
     defaultConfig {
         applicationId = "com.vellora.cut"
         minSdk = 24
@@ -19,7 +35,12 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+            // arm64-v8a only for now — every real device sold since ~2018 is
+            // arm64, and dropping armeabi-v7a roughly halves the APK size
+            // (FFmpeg's native libraries are the main contributor). Add
+            // armeabi-v7a back (and switch to an .aab) before Play Store
+            // release so Google can serve the right ABI per device.
+            abiFilters += listOf("arm64-v8a")
         }
     }
 
@@ -27,9 +48,11 @@ android {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("shared")
         }
         debug {
             isDebuggable = true
+            signingConfig = signingConfigs.getByName("shared")
         }
     }
 

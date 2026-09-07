@@ -5,6 +5,8 @@ import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
 import android.net.Uri
+import android.widget.MediaController
+import android.widget.VideoView
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -27,6 +29,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.FileProvider
 import com.vellora.cut.R
 import com.vellora.cut.autogen.data.AutoGenProjectEntity
@@ -71,6 +74,7 @@ fun TimelineScreen(
 
     var project by remember { mutableStateOf<AutoGenProjectEntity?>(null) }
     var renderState by remember { mutableStateOf<RenderUiState>(RenderUiState.Idle) }
+    var previewingFile by remember { mutableStateOf<File?>(null) }
     val allPrompts by dao.observePrompts(projectId).collectAsState(initial = emptyList())
     val doneImages = remember(allPrompts) {
         allPrompts.filter { it.status == PromptStatus.DONE }.sortedBy { it.orderIndex }
@@ -113,6 +117,7 @@ fun TimelineScreen(
 
     val currentProject = project
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Scaffold(containerColor = BackgroundDark) { padding ->
         Column(
             modifier = Modifier
@@ -336,6 +341,7 @@ fun TimelineScreen(
                     state = renderState,
                     onRenderClick = triggerRender,
                     enabled = doneImages.isNotEmpty(),
+                    onPreviewClick = { file -> previewingFile = file },
                     onShareClick = { file ->
                         val uri = FileProvider.getUriForFile(
                             context, "${context.packageName}.fileprovider", file
@@ -377,6 +383,14 @@ fun TimelineScreen(
                     )
                 )
             }
+        }
+    }
+
+        if (previewingFile != null) {
+            RenderedVideoPreviewOverlay(
+                file = previewingFile!!,
+                onClose = { previewingFile = null }
+            )
         }
     }
 }
@@ -548,6 +562,7 @@ private fun RenderSection(
     state: RenderUiState,
     onRenderClick: () -> Unit,
     onShareClick: (File) -> Unit,
+    onPreviewClick: (File) -> Unit,
     enabled: Boolean = true
 ) {
     Column(
@@ -590,6 +605,12 @@ private fun RenderSection(
                 Text(text = state.file.name, color = TextSecondary, fontSize = 11.sp)
                 Spacer(modifier = Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(
+                        onClick = { onPreviewClick(state.file) },
+                        colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
+                    ) {
+                        Text(text = "▶ Preview", color = BackgroundDark, fontWeight = FontWeight.Bold)
+                    }
                     Button(
                         onClick = { onShareClick(state.file) },
                         colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
@@ -699,4 +720,38 @@ private fun TimelineImageRow(item: TimelineImage) {
 private fun formatMs(ms: Long): String {
     val totalSec = ms / 1000.0
     return "%.1fs".format(totalSec)
+}
+
+/**
+ * Full-screen overlay that plays the actual rendered mp4 — so transitions,
+ * motion effects, and audio sync can be checked exactly as FFmpeg produced
+ * them (the live PreviewPlayer above only shows raw images switching, not
+ * the real baked-in transitions/zoompan).
+ */
+@Composable
+private fun RenderedVideoPreviewOverlay(file: File, onClose: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+    ) {
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { context ->
+                VideoView(context).apply {
+                    setVideoURI(Uri.fromFile(file))
+                    setMediaController(MediaController(context).also { it.setAnchorView(this) })
+                    setOnPreparedListener { it.isLooping = false; start() }
+                }
+            }
+        )
+        IconButton(
+            onClick = onClose,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(16.dp)
+        ) {
+            Text(text = "✕", color = Color.White, fontSize = 26.sp)
+        }
+    }
 }

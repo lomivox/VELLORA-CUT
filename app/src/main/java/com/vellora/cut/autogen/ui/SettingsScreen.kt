@@ -2,27 +2,49 @@ package com.vellora.cut.autogen.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.vellora.cut.autogen.data.CloudflareAccount
 import com.vellora.cut.autogen.data.SecureCredentialStore
 import com.vellora.cut.ui.theme.*
+import java.util.UUID
+
+/** One row in the on-screen list — has its own stable key so Compose doesn't
+ * mix up text fields when a row in the middle is deleted. */
+private data class AccountRow(
+    val key: String = UUID.randomUUID().toString(),
+    var accountId: String,
+    var apiToken: String
+)
 
 @Composable
 fun SettingsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val store = remember { SecureCredentialStore(context) }
 
-    var accountId by remember { mutableStateOf(store.accountId) }
-    var apiToken by remember { mutableStateOf(store.apiToken) }
-    var showToken by remember { mutableStateOf(false) }
+    val rows = remember {
+        val saved = store.accounts
+        mutableStateListOf<AccountRow>().apply {
+            if (saved.isEmpty()) {
+                add(AccountRow(accountId = "", apiToken = ""))
+            } else {
+                saved.forEach { add(AccountRow(accountId = it.accountId, apiToken = it.apiToken)) }
+            }
+        }
+    }
     var savedMessage by remember { mutableStateOf<String?>(null) }
 
     Scaffold(containerColor = BackgroundDark) { padding ->
@@ -37,69 +59,57 @@ fun SettingsScreen(onBack: () -> Unit) {
             }
 
             Spacer(modifier = Modifier.height(8.dp))
-            Text(text = "Cloudflare AI Settings", color = CyanPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text(text = "Cloudflare AI Accounts", color = CyanPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "یہ credentials صرف اس فون پر، encrypted طور پر محفوظ ہوتی ہیں",
+                text = "یہ credentials صرف اس فون پر، encrypted طور پر محفوظ ہوتی ہیں۔ " +
+                    "ایک سے زیادہ accounts add کریں — روزانہ کوٹہ ختم ہونے پر اگلا account خود استعمال ہوگا۔",
                 color = TextSecondary,
                 fontSize = 12.sp
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            Text(text = "Account ID", color = TextSecondary, fontSize = 12.sp)
-            Spacer(modifier = Modifier.height(6.dp))
-            OutlinedTextField(
-                value = accountId,
-                onValueChange = { accountId = it.trim(); savedMessage = null },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = TextPrimary,
-                    unfocusedTextColor = TextPrimary,
-                    focusedBorderColor = CyanPrimary,
-                    unfocusedBorderColor = TextSecondary,
-                    cursorColor = CyanPrimary
-                )
-            )
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                rows.forEachIndexed { index, row ->
+                    AccountCard(
+                        index = index,
+                        row = row,
+                        onAccountIdChange = { row.accountId = it; savedMessage = null; rows[index] = row.copy() },
+                        onApiTokenChange = { row.apiToken = it; savedMessage = null; rows[index] = row.copy() },
+                        onDelete = if (rows.size > 1) {
+                            { rows.removeAt(index); savedMessage = null }
+                        } else null
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
 
-            Spacer(modifier = Modifier.height(20.dp))
+                OutlinedButton(
+                    onClick = { rows.add(AccountRow(accountId = "", apiToken = "")) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(text = "+ Add Account (${rows.size} so far)", color = CyanPrimary)
+                }
 
-            Text(text = "API Token", color = TextSecondary, fontSize = 12.sp)
-            Spacer(modifier = Modifier.height(6.dp))
-            OutlinedTextField(
-                value = apiToken,
-                onValueChange = { apiToken = it.trim(); savedMessage = null },
-                singleLine = true,
-                visualTransformation = if (showToken) VisualTransformation.None else PasswordVisualTransformation(),
-                trailingIcon = {
-                    TextButton(onClick = { showToken = !showToken }) {
-                        Text(text = if (showToken) "Hide" else "Show", color = CyanPrimary, fontSize = 11.sp)
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = TextPrimary,
-                    unfocusedTextColor = TextPrimary,
-                    focusedBorderColor = CyanPrimary,
-                    unfocusedBorderColor = TextSecondary,
-                    cursorColor = CyanPrimary
-                )
-            )
-
-            Spacer(modifier = Modifier.height(28.dp))
+                Spacer(modifier = Modifier.height(20.dp))
+            }
 
             Button(
                 onClick = {
-                    store.accountId = accountId
-                    store.apiToken = apiToken
-                    savedMessage = "محفوظ ہو گیا"
+                    val validAccounts = rows
+                        .filter { it.accountId.isNotBlank() && it.apiToken.isNotBlank() }
+                        .map { CloudflareAccount(it.accountId, it.apiToken) }
+                    store.accounts = validAccounts
+                    savedMessage = "${validAccounts.size} account(s) محفوظ ہو گئے"
                 },
-                enabled = accountId.isNotBlank() && apiToken.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
             ) {
-                Text(text = "Save", color = BackgroundDark)
+                Text(text = "Save All", color = BackgroundDark, fontWeight = FontWeight.Bold)
             }
 
             savedMessage?.let {
@@ -112,3 +122,72 @@ fun SettingsScreen(onBack: () -> Unit) {
         }
     }
 }
+
+@Composable
+private fun AccountCard(
+    index: Int,
+    row: AccountRow,
+    onAccountIdChange: (String) -> Unit,
+    onApiTokenChange: (String) -> Unit,
+    onDelete: (() -> Unit)?
+) {
+    var showToken by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(SurfaceDark)
+            .padding(14.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = "Account #${index + 1}", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            if (onDelete != null) {
+                TextButton(onClick = onDelete) {
+                    Text(text = "✕ Remove", color = Color(0xFFFF6B6B), fontSize = 12.sp)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        OutlinedTextField(
+            value = row.accountId,
+            onValueChange = { onAccountIdChange(it.trim()) },
+            label = { Text("Account ID", fontSize = 11.sp) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            colors = fieldColors()
+        )
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        OutlinedTextField(
+            value = row.apiToken,
+            onValueChange = { onApiTokenChange(it.trim()) },
+            label = { Text("API Token", fontSize = 11.sp) },
+            singleLine = true,
+            visualTransformation = if (showToken) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon = {
+                TextButton(onClick = { showToken = !showToken }) {
+                    Text(text = if (showToken) "Hide" else "Show", color = CyanPrimary, fontSize = 11.sp)
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = fieldColors()
+        )
+    }
+}
+
+@Composable
+private fun fieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = TextPrimary,
+    unfocusedTextColor = TextPrimary,
+    focusedBorderColor = CyanPrimary,
+    unfocusedBorderColor = TextSecondary,
+    cursorColor = CyanPrimary
+)

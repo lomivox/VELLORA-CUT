@@ -9,7 +9,12 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /** Thrown when Cloudflare's API responds with an error for a given prompt. */
-class CloudflareApiException(message: String) : Exception(message)
+class CloudflareApiException(
+    message: String,
+    /** True for "daily free quota used up" style errors — the caller should
+     * try the next pooled account rather than mark the whole prompt failed. */
+    val isQuotaExceeded: Boolean = false
+) : Exception(message)
 
 class CloudflareAiClient {
 
@@ -47,6 +52,16 @@ class CloudflareAiClient {
         client.newCall(request).execute().use { response ->
             val responseBody = response.body?.string()
                 ?: throw CloudflareApiException("Empty response from Cloudflare")
+
+            // Cloudflare returns HTTP 429 (rate limit) or its own error code
+            // 4006 ("daily free allocation used up") when Workers AI quota
+            // for THIS account is exhausted for the day.
+            if (response.code == 429 || responseBody.contains("\"code\":4006")) {
+                throw CloudflareApiException(
+                    "Is account ka aaj ka quota khatam ho chuka hai",
+                    isQuotaExceeded = true
+                )
+            }
 
             if (!response.isSuccessful) {
                 val errorMsg = try {

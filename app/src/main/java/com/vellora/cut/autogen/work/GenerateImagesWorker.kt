@@ -36,9 +36,10 @@ class GenerateImagesWorker(
         if (projectId == -1L) return@withContext Result.failure()
 
         val credentials = SecureCredentialStore(applicationContext)
-        if (!credentials.hasCredentials()) {
+        val accounts = credentials.accounts
+        if (accounts.isEmpty()) {
             return@withContext Result.failure(
-                workDataOf(KEY_ERROR to "Cloudflare credentials not set — open Settings first")
+                workDataOf(KEY_ERROR to "Koi Cloudflare account save nahi hai — pehle Settings mein add karein")
             )
         }
 
@@ -56,19 +57,48 @@ class GenerateImagesWorker(
         var successCount = 0
         var failCount = 0
 
+        // Accounts whose daily quota ran out during THIS run — skipped for
+        // every prompt after that (quota only resets once a day, so there's
+        // no point re-trying a dead account on every single prompt).
+        val exhaustedAccountIds = mutableSetOf<String>()
+
         for (prompt in remaining) {
             if (isStopped) break
 
             dao.updatePrompt(prompt.copy(status = PromptStatus.GENERATING, errorMessage = null))
 
-            try {
-                val imageBytes = client.generateImage(
-                    prompt = prompt.promptText,
-                    accountId = credentials.accountId,
-                    apiToken = credentials.apiToken,
-                    model = credentials.imageModel
-                )
+            val usableAccounts = accounts.filter { it.accountId !in exhaustedAccountIds }
+            var imageBytes: ByteArray? = null
+            var lastError: String? = null
 
+            if (usableAccounts.isEmpty()) {
+                lastError = "Sab ${accounts.size} accounts ka aaj ka quota khatam ho chuka hai"
+            } else {
+                for (account in usableAccounts) {
+                    try {
+                        imageBytes = client.generateImage(
+                            prompt = prompt.promptText,
+                            accountId = account.accountId,
+                            apiToken = account.apiToken,
+                            model = credentials.imageModel
+                        )
+                        break // this account worked, stop trying others
+                    } catch (e: CloudflareApiException) {
+                        lastError = e.message
+                        if (e.isQuotaExceeded) {
+                            exhaustedAccountIds += account.accountId
+                            continue // try the next pooled account
+                        } else {
+                            break // a real error (bad prompt etc.) — don't burn through every account for it
+                        }
+                    } catch (e: Exception) {
+                        lastError = e.message ?: "Unknown error"
+                        break
+                    }
+                }
+            }
+
+            if (imageBytes != null) {
                 val imageFile = File(outputDir, "${prompt.label}.png")
                 imageFile.writeBytes(imageBytes)
 
@@ -80,11 +110,8 @@ class GenerateImagesWorker(
                     )
                 )
                 successCount++
-            } catch (e: CloudflareApiException) {
-                dao.updatePrompt(prompt.copy(status = PromptStatus.FAILED, errorMessage = e.message))
-                failCount++
-            } catch (e: Exception) {
-                dao.updatePrompt(prompt.copy(status = PromptStatus.FAILED, errorMessage = e.message ?: "Unknown error"))
+            } else {
+                dao.updatePrompt(prompt.copy(status = PromptStatus.FAILED, errorMessage = lastError))
                 failCount++
             }
 
@@ -92,7 +119,9 @@ class GenerateImagesWorker(
                 workDataOf(
                     KEY_DONE to successCount,
                     KEY_FAILED to failCount,
-                    KEY_TOTAL to remaining.size
+                    KEY_TOTAL to remaining.size,
+                    KEY_ACCOUNTS_EXHAUSTED to exhaustedAccountIds.size,
+                    KEY_ACCOUNTS_TOTAL to accounts.size
                 )
             )
         }
@@ -114,6 +143,8 @@ class GenerateImagesWorker(
         const val KEY_DONE = "done"
         const val KEY_FAILED = "failed"
         const val KEY_TOTAL = "total"
+        const val KEY_ACCOUNTS_EXHAUSTED = "accounts_exhausted"
+        const val KEY_ACCOUNTS_TOTAL = "accounts_total"
 
         fun uniqueWorkName(projectId: Long) = "autogen_generate_$projectId"
     }

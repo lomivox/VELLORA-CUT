@@ -1,13 +1,11 @@
 package com.vellora.cut.autogen.ui.reference
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -15,64 +13,86 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.vellora.cut.R
 import com.vellora.cut.ui.theme.*
 
 /**
- * EXTRACTED UI REFERENCE — copied out of the old manual Editor
- * (`com.vellora.cut.ui.EditorScreen`) before its removal, per the decision
- * to fold editor-like features into the Auto Generator's own Timeline
- * screen instead of keeping a separate Editor project.
+ * Copied from VELLORA-CUT's
+ * `autogen/ui/reference/EditorControlsReference.kt` — same three pieces
+ * extracted from the old manual Editor before its removal there. Paddings
+ * and colors are untouched. Drawable strokeWidth 2 -> 2.6 in
+ * res/drawable/ic_*.xml for a bolder look.
  *
- * These three composables are the ONLY pieces kept from the old Editor —
- * everything else (EditorScreen, EditorHomeScreen, HubScreen, TimelineView,
- * AiUhdSheet, the `timeline` package's clip-editing engine, NativeEngine, and the
- * native `cpp/` folder) has been deleted.
+ * Icon sizes are no longer fixed dp/sp values — each composable takes an
+ * `iconSize: Dp` parameter that MainActivity computes from that bar's
+ * actual on-screen height (screenHeightDp * bar's %), so icons scale
+ * with the bar's real proportion of the screen on every device instead
+ * of a fixed number.
  *
- * They are pure, parameterized, presentation-only composables — no
- * dependency on ExoPlayer or the old segment/timeline data model, so they
- * carry no logic from the deleted system. NOT wired into any screen yet;
- * this file exists purely so the visual structure isn't lost before the
- * next integration phase.
+ * ROOT-CAUSE FIX (after repeated size/visibility bugs on Top Bar and
+ * Middle Controls): those two composables used to draw their icons as
+ * plain Unicode/emoji Text() characters (✕ 🔍 ⛶ ▶ ⏸ ⧉ ↩ ↪). Text-glyph
+ * "icons" render inconsistently across devices/fonts/emoji sets — some
+ * glyphs (like ▶) have a tiny visual shape inside their own font
+ * metrics no matter how large the fontSize is, which is why the play
+ * button kept disappearing regardless of sp/fontWeight tweaks. All of
+ * those are now real vector drawables (ic_close, ic_search,
+ * ic_fullscreen, ic_play, ic_pause, ic_split, ic_undo, ic_redo) drawn
+ * with Icon()+Modifier.size(), exactly like the Bottom Toolbar already
+ * did correctly from the start — same strokeWidth 2.6 style. This is
+ * the only reliable way to control icon size/weight precisely.
+ *
+ * Also fixed: the Top Bar's own vertical padding (12dp -> 8dp) and the
+ * AI UHD/Export pill's padding (6dp -> 4dp) and font size (12/13sp ->
+ * 11sp), because the previous padding made the trailing pills taller
+ * than the Top Bar's 6.8%-of-screen height, so they overflowed and got
+ * visually cropped top and bottom.
+ *
+ * Nothing here is functional yet: all click callbacks are empty.
  */
 
-// ─────────────────────────────────────────────────────────────
-// 1) TOP BAR — close button, search, and a trailing action slot
-//    (originally held the AI UHD dropdown + Export button; those were
-//    editor-specific and were dropped, but the slot is kept generic)
-// ─────────────────────────────────────────────────────────────
+// 1) TOP BAR
+// iconSize is computed by the caller from this bar's actual height (see
+// MainActivity: sectionHeightDp(6.8f) * fraction) so it scales with the
+// bar's real percentage of the screen, instead of a fixed sp value.
 @Composable
 fun EditorTopBarReference(
     onClose: () -> Unit,
     onSearch: () -> Unit,
+    iconSize: Dp = 20.dp,
     trailingActions: @Composable RowScope.() -> Unit = {}
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(SurfaceDark)
-            .statusBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(20.dp)
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             IconButton(onClick = onClose) {
-                Text("✕", color = TextPrimary, fontSize = 26.sp)
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_close),
+                    contentDescription = "Close",
+                    tint = TextPrimary,
+                    modifier = Modifier.size(iconSize)
+                )
             }
             IconButton(onClick = onSearch) {
-                Text("🔍", color = TextPrimary, fontSize = 22.sp)
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_search),
+                    contentDescription = "Search",
+                    tint = TextPrimary,
+                    modifier = Modifier.size(iconSize)
+                )
             }
         }
         Row(
@@ -83,10 +103,9 @@ fun EditorTopBarReference(
     }
 }
 
-// ─────────────────────────────────────────────────────────────
-// 2) MIDDLE CONTROLS — sits between the preview and the timeline:
-//    fullscreen toggle, play/pause, snap indicator, undo/redo
-// ─────────────────────────────────────────────────────────────
+// 2) MIDDLE CONTROLS (between preview and timeline)
+// iconSize is computed by the caller from this bar's actual height (see
+// MainActivity: sectionHeightDp(4.9f) * fraction).
 @Composable
 fun PreviewMiddleControlsReference(
     isPlaying: Boolean,
@@ -94,11 +113,19 @@ fun PreviewMiddleControlsReference(
     onFullscreen: () -> Unit,
     onPlayPause: () -> Unit,
     onUndo: () -> Unit,
-    onRedo: () -> Unit
+    onRedo: () -> Unit,
+    canUndo: Boolean = true,
+    canRedo: Boolean = true,
+    iconSize: Dp = 18.dp
 ) {
-    Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp)) {
+    Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
         IconButton(onClick = onFullscreen, modifier = Modifier.align(Alignment.CenterStart)) {
-            Text("⛶", color = TextPrimary, fontSize = 24.sp)
+            Icon(
+                painter = painterResource(id = R.drawable.ic_fullscreen),
+                contentDescription = "Fullscreen",
+                tint = TextPrimary,
+                modifier = Modifier.size(iconSize)
+            )
         }
         Box(
             modifier = Modifier.align(Alignment.Center)
@@ -107,109 +134,81 @@ fun PreviewMiddleControlsReference(
                     indication = null,
                     onClick = onPlayPause
                 )
-                .padding(10.dp)
+                .padding(8.dp)
         ) {
-            PlayPauseGlyph(isPlaying = isPlaying, tint = TextPrimary, size = 22.dp)
+            Icon(
+                painter = painterResource(id = if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play),
+                contentDescription = if (isPlaying) "Pause" else "Play",
+                tint = TextPrimary,
+                modifier = Modifier.size(iconSize)
+            )
         }
         Row(
             modifier = Modifier.align(Alignment.CenterEnd),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("⧉", color = TextSecondary, fontSize = 20.sp)
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_split),
+                    contentDescription = "Snap",
+                    tint = TextSecondary,
+                    modifier = Modifier.size(iconSize * 0.9f)
+                )
                 Text(
                     if (snapEnabled) "ON" else "OFF",
                     color = CyanPrimary,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold
+                    fontSize = 8.sp,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                 )
             }
-            Text(
-                "↩", color = TextSecondary, fontSize = 26.sp,
-                modifier = Modifier.padding(horizontal = 8.dp)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onUndo
-                    )
-            )
-            Text(
-                "↪", color = TextSecondary, fontSize = 26.sp,
-                modifier = Modifier.padding(end = 6.dp)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onRedo
-                    )
-            )
+            IconButton(onClick = onUndo, enabled = canUndo, modifier = Modifier.padding(horizontal = 2.dp)) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_undo),
+                    contentDescription = "Undo",
+                    tint = if (canUndo) TextSecondary else TextSecondary.copy(alpha = 0.35f),
+                    modifier = Modifier.size(iconSize)
+                )
+            }
+            IconButton(onClick = onRedo, enabled = canRedo) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_redo),
+                    contentDescription = "Redo",
+                    tint = if (canRedo) TextSecondary else TextSecondary.copy(alpha = 0.35f),
+                    modifier = Modifier.size(iconSize)
+                )
+            }
         }
     }
 }
 
-// ─────────────────────────────────────────────────────────────
-// 3) BOTTOM TOOLBAR — CapCut-style scrollable icon row.
-//    Real vector icons (kept in res/drawable/ic_trim.xml etc.) —
-//    those drawables were NOT deleted, only this Compose row that
-//    displayed them.
-// ─────────────────────────────────────────────────────────────
+// 3) BOTTOM NAVIGATION TOOLBAR
 data class ToolbarAction(
     val iconRes: Int,
     val label: String,
     val onClick: () -> Unit
 )
 
-// Hand-drawn play/pause glyph (instead of the ▶/⏸ emoji characters) — some
-// devices render those emoji with their own fixed colors (e.g. a yellow
-// pause icon) that ignore the requested tint. Drawing it ourselves keeps
-// both states in the exact same color.
+// iconSize is computed by the caller from this bar's actual height (see
+// MainActivity: sectionHeightDp(9.8f) * fraction) — leaves room below the
+// icon for the label text and the bar's own vertical padding.
 @Composable
-private fun PlayPauseGlyph(isPlaying: Boolean, tint: Color, size: Dp) {
-    Canvas(modifier = Modifier.size(size)) {
-        if (isPlaying) {
-            val barWidth = this.size.width * 0.28f
-            val barHeight = this.size.height * 0.82f
-            val gap = this.size.width * 0.16f
-            val top = (this.size.height - barHeight) / 2f
-            drawRect(
-                color = tint,
-                topLeft = Offset(center.x - gap / 2f - barWidth, top),
-                size = Size(barWidth, barHeight)
-            )
-            drawRect(
-                color = tint,
-                topLeft = Offset(center.x + gap / 2f, top),
-                size = Size(barWidth, barHeight)
-            )
-        } else {
-            val w = this.size.width
-            val h = this.size.height
-            val path = Path().apply {
-                moveTo(w * 0.24f, h * 0.12f)
-                lineTo(w * 0.24f, h * 0.88f)
-                lineTo(w * 0.86f, h * 0.5f)
-                close()
-            }
-            drawPath(path, color = tint)
-        }
-    }
-}
-
-@Composable
-fun BottomToolbarReference(actions: List<ToolbarAction>) {
+fun BottomToolbarReference(
+    actions: List<ToolbarAction>,
+    iconSize: Dp = 20.dp
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(SurfaceVariant)
             .horizontalScroll(rememberScrollState())
-            .navigationBarsPadding()
-            .padding(vertical = 14.dp)
+            .padding(vertical = 11.dp)
     ) {
         actions.forEach { action ->
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
-                    .padding(horizontal = 18.dp)
+                    .padding(horizontal = 20.dp)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
@@ -220,10 +219,10 @@ fun BottomToolbarReference(actions: List<ToolbarAction>) {
                     painter = painterResource(id = action.iconRes),
                     contentDescription = action.label,
                     tint = TextPrimary,
-                    modifier = Modifier.size(26.dp)
+                    modifier = Modifier.size(iconSize)
                 )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(action.label, color = TextSecondary, fontSize = 11.sp)
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(action.label, color = TextSecondary, fontSize = 10.sp)
             }
         }
     }

@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -71,6 +72,17 @@ fun TimelineScreen(
     val dao = db.autoGenDao()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val screenHeightDp = LocalConfiguration.current.screenHeightDp.dp
+
+    // Icon sizes computed from each bar's REAL on-screen height (screen
+    // height × that bar's own weight %), not a fixed dp number — same
+    // formula as VELLORA-ENGINE's reference layout, so icons stay
+    // proportional to their bar on every device instead of guessing one
+    // fixed size. Fractions (45% / 68% / 40%) are VELLORA-ENGINE's tuned
+    // values after an on-device check found 45% too small for Controls.
+    val topBarIconSize = screenHeightDp * 0.068f * 0.45f
+    val controlsIconSize = screenHeightDp * 0.049f * 0.68f
+    val navIconSize = screenHeightDp * 0.098f * 0.40f
 
     var project by remember { mutableStateOf<AutoGenProjectEntity?>(null) }
     var renderState by remember { mutableStateOf<RenderUiState>(RenderUiState.Idle) }
@@ -129,6 +141,7 @@ fun TimelineScreen(
                 EditorTopBarReference(
                     onClose = onBack,
                     onSearch = { },
+                    iconSize = topBarIconSize,
                     trailingActions = {
                         Button(
                             onClick = { startRender?.invoke() },
@@ -184,7 +197,8 @@ fun TimelineScreen(
                     onFullscreen = { },
                     onPlayPause = { togglePlayPause?.invoke() },
                     onUndo = { },
-                    onRedo = { }
+                    onRedo = { },
+                    iconSize = controlsIconSize
                 )
             }
 
@@ -360,6 +374,7 @@ fun TimelineScreen(
             // ---- NAVIGATION (~9.8%) — extracted from the old Editor; layout only, no button functions wired yet ----
             Box(modifier = Modifier.fillMaxWidth().weight(0.098f)) {
                 BottomToolbarReference(
+                    iconSize = navIconSize,
                     actions = listOf(
                         ToolbarAction(R.drawable.ic_trim, "Split") { },
                         ToolbarAction(R.drawable.ic_text, "Text") { },

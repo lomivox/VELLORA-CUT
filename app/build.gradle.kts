@@ -91,8 +91,9 @@ dependencies {
     implementation("androidx.room:room-ktx:2.6.1")
     ksp("androidx.room:room-compiler:2.6.1")
 
-    implementation("androidx.media3:media3-exoplayer:1.5.0")
-    implementation("androidx.media3:media3-ui:1.5.0")
+    // media3-exoplayer/media3-ui removed — never actually used (video
+    // preview uses Android's built-in VideoView instead), was pure
+    // dead-weight costing ~3-5MB with zero functionality.
 
     // Auto Generator: secure credential storage, Cloudflare API calls, background generation
     implementation("androidx.security:security-crypto:1.1.0-alpha06")

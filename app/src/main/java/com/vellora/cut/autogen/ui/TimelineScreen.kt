@@ -92,6 +92,38 @@ fun TimelineScreen(
     var previewingFile by remember { mutableStateOf<File?>(null) }
     var editingDurationFor by remember { mutableStateOf<com.vellora.cut.autogen.data.PromptEntity?>(null) }
     var showExportOverlay by remember { mutableStateOf(false) }
+    var pendingGallerySaveFile by remember { mutableStateOf<File?>(null) }
+
+    val galleryPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val file = pendingGallerySaveFile
+        pendingGallerySaveFile = null
+        if (granted && file != null) {
+            val uri = com.vellora.cut.autogen.render.GallerySaver.saveVideoToGallery(context, file)
+            android.widget.Toast.makeText(
+                context,
+                if (uri != null) "✅ Gallery mein save ho gayi" else "❌ Save nahi ho saki",
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+        } else if (!granted) {
+            android.widget.Toast.makeText(context, "Storage permission chahiye", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val onSaveToGallery: (File) -> Unit = { file ->
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            val uri = com.vellora.cut.autogen.render.GallerySaver.saveVideoToGallery(context, file)
+            android.widget.Toast.makeText(
+                context,
+                if (uri != null) "✅ Gallery mein save ho gayi (Movies/VELLORA-CUT)" else "❌ Save nahi ho saki",
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+        } else {
+            pendingGallerySaveFile = file
+            galleryPermissionLauncher.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        }
+    }
     val allPrompts by dao.observePrompts(projectId).collectAsState(initial = emptyList())
     val doneImages = remember(allPrompts) {
         allPrompts.filter { it.status == PromptStatus.DONE }.sortedBy { it.orderIndex }
@@ -357,6 +389,7 @@ fun TimelineScreen(
                             when (result) {
                                 is RenderResult.Success -> {
                                     renderState = RenderUiState.Done(result.outputFile)
+                                    onSaveToGallery(result.outputFile) // automatic — no button needed
                                     scope.launch {
                                         val updated = currentProject.copy(
                                             status = AutoGenProjectStatus.RENDERED,
@@ -676,6 +709,7 @@ private fun RenderSection(
                 Text(text = "✅ Render مکمل", color = CyanPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(text = state.file.name, color = TextSecondary, fontSize = 11.sp)
+                Text(text = "💾 Gallery (Movies/VELLORA-CUT) میں محفوظ ہو گئی", color = TextSecondary, fontSize = 11.sp)
                 Spacer(modifier = Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Button(
@@ -1017,6 +1051,8 @@ private fun ExportProgressOverlay(
                             Text(text = "Share", color = BackgroundDark, fontWeight = FontWeight.Bold)
                         }
                     }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(text = "💾 Gallery میں خود بخود محفوظ ہو گئی", color = TextSecondary, fontSize = 11.sp)
                 }
                 is RenderUiState.Error -> {
                     Text(text = renderState.message, color = TextSecondary, fontSize = 12.sp)

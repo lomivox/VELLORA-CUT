@@ -158,6 +158,8 @@ fun TimelineScreen(
     // and so the Top Bar's Export action can trigger the same render logic as the Timeline's Render button.
     var isPlaying by remember { mutableStateOf(false) }
     var togglePlayPause by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var seekPreviewTo by remember { mutableStateOf<((Long) -> Unit)?>(null) }
+    var previewPositionMs by remember { mutableStateOf(0L) }
     var startRender by remember { mutableStateOf<(() -> Unit)?>(null) }
 
     val audioLauncher = rememberLauncherForActivityResult(
@@ -267,7 +269,10 @@ fun TimelineScreen(
                     totalMs = totalMs,
                     isPlaying = isPlaying,
                     onIsPlayingChange = { isPlaying = it },
-                    onTogglePlayPauseReady = { togglePlayPause = it }
+                    onTogglePlayPauseReady = { togglePlayPause = it },
+                    positionMs = previewPositionMs,
+                    onPositionChange = { previewPositionMs = it },
+                    onSeekReady = { seekPreviewTo = it }
                 )
             }
 
@@ -314,6 +319,13 @@ fun TimelineScreen(
                 VideoAudioTimelineView(
                     project = currentProject,
                     timeline = timeline,
+                    playheadMs = previewPositionMs,
+                    onScrubStart = { if (isPlaying) togglePlayPause?.invoke() },
+                    onScrub = { ms -> seekPreviewTo?.invoke(ms) },
+                    onClipTapped = { clipId ->
+                        editingDurationFor = timeline.find { it.prompt.id.toString() == clipId }?.prompt
+                    },
+                    onJoinTapped = { showTransitionSheet = true },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(150.dp)
@@ -644,12 +656,14 @@ private fun PreviewPlayer(
     totalMs: Long,
     isPlaying: Boolean,
     onIsPlayingChange: (Boolean) -> Unit,
-    onTogglePlayPauseReady: (() -> Unit) -> Unit
+    onTogglePlayPauseReady: (() -> Unit) -> Unit,
+    positionMs: Long,
+    onPositionChange: (Long) -> Unit,
+    onSeekReady: ((Long) -> Unit) -> Unit
 ) {
     val context = LocalContext.current
     var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
     var isPrepared by remember { mutableStateOf(false) }
-    var positionMs by remember { mutableStateOf(0L) }
     var isScrubbing by remember { mutableStateOf(false) }
     var waveform by remember(project.voiceOverUri) { mutableStateOf(FloatArray(0)) }
 
@@ -711,14 +725,23 @@ private fun PreviewPlayer(
             mp?.takeIf { isPrepared }?.pause()
             onIsPlayingChange(false)
         } else {
-            if (positionMs >= totalMs) {
-                positionMs = 0L
-            }
-            mp?.takeIf { isPrepared }?.let { it.seekTo(positionMs.toInt()); it.start() }
+            val resumeFrom = if (positionMs >= totalMs) 0L else positionMs
+            if (resumeFrom != positionMs) onPositionChange(resumeFrom)
+            mp?.takeIf { isPrepared }?.let { it.seekTo(resumeFrom.toInt()); it.start() }
             onIsPlayingChange(true)
         }
     }
     SideEffect { onTogglePlayPauseReady(togglePlayPause) }
+
+    // Lets anything outside this composable (the new dual-track timeline's
+    // scrub gesture) move playback to an exact position — same seek the
+    // slider below already does, just reachable from a sibling composable.
+    val seekTo: (Long) -> Unit = { newPositionMs ->
+        val clamped = newPositionMs.coerceIn(0L, totalMs)
+        mediaPlayer?.takeIf { isPrepared }?.seekTo(clamped.toInt())
+        onPositionChange(clamped)
+    }
+    SideEffect { onSeekReady(seekTo) }
 
     // Advance the position while playing — synced to the audio player's
     // position when one exists and is ready, otherwise driven by elapsed
@@ -731,14 +754,16 @@ private fun PreviewPlayer(
             lastTickMs = now
             if (!isScrubbing) {
                 val mp = mediaPlayer
-                positionMs = if (mp != null && isPrepared) {
+                val next = if (mp != null && isPrepared) {
                     mp.currentPosition.toLong()
                 } else {
                     (positionMs + elapsed).coerceAtMost(totalMs)
                 }
-                if (positionMs >= totalMs) {
+                if (next >= totalMs) {
                     onIsPlayingChange(false)
-                    positionMs = 0L
+                    onPositionChange(0L)
+                } else {
+                    onPositionChange(next)
                 }
             }
             delay(40)
@@ -859,7 +884,7 @@ private fun PreviewPlayer(
                 valueRange = 0f..max(totalMs, 1L).toFloat(),
                 onValueChange = { value ->
                     isScrubbing = true
-                    positionMs = value.toLong()
+                    onPositionChange(value.toLong())
                 },
                 onValueChangeFinished = {
                     mediaPlayer?.takeIf { isPrepared }?.seekTo(positionMs.toInt())
@@ -1041,6 +1066,11 @@ private fun ModeChip(label: String, selected: Boolean, onClick: () -> Unit) {
 private fun VideoAudioTimelineView(
     project: AutoGenProjectEntity,
     timeline: List<TimelineImage>,
+    playheadMs: Long,
+    onScrubStart: () -> Unit,
+    onScrub: (Long) -> Unit,
+    onClipTapped: (String) -> Unit,
+    onJoinTapped: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -1122,6 +1152,11 @@ private fun VideoAudioTimelineView(
             view.waveform = waveform
             view.audioDurationMs = project.voiceOverDurationMs
             view.clipThumbnails = thumbnails
+            view.playheadMs = playheadMs
+            view.onScrubStart = onScrubStart
+            view.onScrub = onScrub
+            view.onClipSelected = { clipId -> if (clipId != null && clipId != "audio_track") onClipTapped(clipId) }
+            view.onJoinTapped = { _, _ -> onJoinTapped() }
         }
     )
 }

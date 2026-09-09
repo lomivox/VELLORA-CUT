@@ -42,6 +42,8 @@ import com.vellora.cut.autogen.data.MotionEffect
 import com.vellora.cut.autogen.data.PromptStatus
 import com.vellora.cut.autogen.data.TimelineMode
 import com.vellora.cut.autogen.data.TransitionType
+import com.vellora.cut.autogen.playback.ImageBitmapCache
+import com.vellora.cut.autogen.playback.WaveformExtractor
 import com.vellora.cut.autogen.render.RenderEngine
 import com.vellora.cut.autogen.render.RenderResult
 import com.vellora.cut.autogen.timeline.TimelineImage
@@ -54,8 +56,10 @@ import com.vellora.cut.autogen.ui.reference.PreviewMiddleControlsReference
 import com.vellora.cut.autogen.ui.reference.ToolbarAction
 import com.vellora.cut.data.AppDatabase
 import com.vellora.cut.ui.theme.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 /** UI state for the Phase F render flow. */
@@ -65,6 +69,12 @@ private sealed class RenderUiState {
     data class Done(val file: File) : RenderUiState()
     data class Error(val message: String) : RenderUiState()
 }
+
+/** Shared decode cache for this screen's image thumbnails/preview — see
+ * [ImageBitmapCache]'s doc comment (adapted from VELLORA-ENGINE's
+ * BitmapLoader) for why this avoids re-decoding the same file on every
+ * recomposition/scroll. */
+private val LocalImageBitmapCache = compositionLocalOf<ImageBitmapCache?> { null }
 
 @Composable
 fun TimelineScreen(
@@ -76,6 +86,7 @@ fun TimelineScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val screenHeightDp = LocalConfiguration.current.screenHeightDp.dp
+    val imageBitmapCache = remember { ImageBitmapCache(context) }
 
     // Icon sizes computed from each bar's REAL on-screen height (screen
     // height × that bar's own weight %), not a fixed dp number — same
@@ -167,6 +178,7 @@ fun TimelineScreen(
     val currentProject = project
 
     Box(modifier = Modifier.fillMaxSize()) {
+    CompositionLocalProvider(LocalImageBitmapCache provides imageBitmapCache) {
     Scaffold(containerColor = BackgroundDark) { padding ->
         Column(
             modifier = Modifier
@@ -499,6 +511,7 @@ fun TimelineScreen(
             )
         }
     }
+    }
 }
 
 /**
@@ -521,6 +534,19 @@ private fun PreviewPlayer(
     var isPrepared by remember { mutableStateOf(false) }
     var positionMs by remember { mutableStateOf(0L) }
     var isScrubbing by remember { mutableStateOf(false) }
+    var waveform by remember(project.voiceOverUri) { mutableStateOf(FloatArray(0)) }
+
+    // Real decoded-audio waveform (see WaveformExtractor's doc comment,
+    // ported from VELLORA-ENGINE) — purely decorative under the scrub
+    // slider, computed once per voice-over file.
+    LaunchedEffect(project.voiceOverUri) {
+        val uriString = project.voiceOverUri
+        waveform = if (uriString != null) {
+            try { WaveformExtractor(context).extract(Uri.parse(uriString)) } catch (e: Exception) { FloatArray(0) }
+        } else {
+            FloatArray(0)
+        }
+    }
 
     DisposableEffect(project.voiceOverUri) {
         val uriString = project.voiceOverUri
@@ -625,6 +651,30 @@ private fun PreviewPlayer(
         }
 
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+            if (waveform.isNotEmpty()) {
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(36.dp)
+                ) {
+                    val barCount = waveform.size
+                    val barWidth = size.width / barCount
+                    val playedFraction = (positionMs.toFloat() / max(totalMs, 1L).toFloat()).coerceIn(0f, 1f)
+                    val playedBars = (barCount * playedFraction).toInt()
+                    waveform.forEachIndexed { index, amplitude ->
+                        val barHeight = (amplitude * size.height).coerceAtLeast(2f)
+                        drawRect(
+                            color = if (index <= playedBars) CyanPrimary else Color.White.copy(alpha = 0.25f),
+                            topLeft = androidx.compose.ui.geometry.Offset(
+                                index * barWidth,
+                                (size.height - barHeight) / 2f
+                            ),
+                            size = androidx.compose.ui.geometry.Size(barWidth * 0.7f, barHeight)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+            }
             Slider(
                 value = positionMs.toFloat().coerceIn(0f, max(totalMs, 1L).toFloat()),
                 valueRange = 0f..max(totalMs, 1L).toFloat(),
@@ -645,17 +695,22 @@ private fun PreviewPlayer(
 
 @Composable
 private fun rememberDecodedBitmap(path: String?): ImageBitmap? {
+    val cache = LocalImageBitmapCache.current
     var bitmap by remember(path) { mutableStateOf<ImageBitmap?>(null) }
     LaunchedEffect(path) {
         if (path == null) {
             bitmap = null
             return@LaunchedEffect
         }
-        bitmap = try {
-            val options = BitmapFactory.Options().apply { inSampleSize = 2 }
-            BitmapFactory.decodeFile(path, options)?.asImageBitmap()
-        } catch (e: Exception) {
-            null
+        bitmap = withContext(Dispatchers.IO) {
+            try {
+                (cache?.load(path) ?: run {
+                    val options = BitmapFactory.Options().apply { inSampleSize = 2 }
+                    BitmapFactory.decodeFile(path, options)
+                })?.asImageBitmap()
+            } catch (e: Exception) {
+                null
+            }
         }
     }
     return bitmap

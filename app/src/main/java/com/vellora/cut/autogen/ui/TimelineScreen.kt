@@ -1,6 +1,7 @@
 package com.vellora.cut.autogen.ui
 
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
@@ -32,6 +33,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -50,6 +52,9 @@ import com.vellora.cut.autogen.render.AudioProcessor
 import com.vellora.cut.autogen.render.RenderEngine
 import com.vellora.cut.autogen.render.RenderResult
 import com.vellora.cut.autogen.timeline.TimelineImage
+import com.vellora.cut.autogen.timeline.Timeline
+import com.vellora.cut.autogen.timeline.TimelineClip
+import com.vellora.cut.autogen.timeline.TimelineView
 import com.vellora.cut.autogen.timeline.computeTimeline
 import com.vellora.cut.autogen.timeline.timelineStartOffsets
 import com.vellora.cut.autogen.timeline.totalDurationMs
@@ -296,7 +301,7 @@ fun TimelineScreen(
                 // Transition, Motion toolbar buttons) so this column only
                 // shows the summary + the images list.
 
-                Text(text = "Images (${timeline.size})", color = TextSecondary, fontSize = 12.sp)
+                Text(text = "Timeline (${timeline.size} images)", color = TextSecondary, fontSize = 12.sp)
                 if (doneImages.isEmpty()) {
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
@@ -306,11 +311,13 @@ fun TimelineScreen(
                     )
                 }
                 Spacer(modifier = Modifier.height(8.dp))
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    timeline.forEach { item ->
-                        TimelineImageRow(item, onEditDuration = { editingDurationFor = item.prompt })
-                    }
-                }
+                VideoAudioTimelineView(
+                    project = currentProject,
+                    timeline = timeline,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(150.dp)
+                )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -1010,6 +1017,113 @@ private fun ModeChip(label: String, selected: Boolean, onClick: () -> Unit) {
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
         )
     }
+}
+
+/**
+ * Wraps the ported VELLORA-ENGINE [TimelineView] (a Canvas-based
+ * dual-track timeline: video/image clips on top, the voice-over's real
+ * waveform underneath) inside Compose via AndroidView — the same pattern
+ * VELLORA-ENGINE's own MainActivity already uses. Auto-builds its
+ * [Timeline] straight from the already-computed [timeline] (images) and
+ * [project]'s voice-over — nothing here is manually placed, so every
+ * newly generated image appears on it automatically, in order, each
+ * clip's width proportional to its computed duration exactly like the
+ * cuts in Preview/RenderEngine (same [TimelineImage] data, same
+ * durations).
+ *
+ * Phase 1 (this pass): visual placement + real thumbnails + real
+ * waveform + the same cut boundaries Preview/RenderEngine use. Scrubbing
+ * this timeline to drive Preview's playhead, and tap-to-edit a clip's
+ * duration (previously [TimelineImageRow]'s pencil icon), are follow-up
+ * wiring — not done here yet.
+ */
+@Composable
+private fun VideoAudioTimelineView(
+    project: AutoGenProjectEntity,
+    timeline: List<TimelineImage>,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val density = LocalDensity.current
+    val cache = LocalImageBitmapCache.current
+
+    val modelTimeline = remember(timeline, project.voiceOverUri, project.voiceOverDurationMs, project.processedAudioPath) {
+        val offsets = timelineStartOffsets(timeline)
+        val videoClips = timeline.mapIndexed { index, item ->
+            TimelineClip(
+                id = item.prompt.id.toString(),
+                startMs = offsets[index],
+                durationMs = item.durationMs,
+                label = "%03d".format(index + 1),
+                sourceUri = item.prompt.imagePath,
+                isVideo = false
+            )
+        }
+        val audioUri = project.processedAudioPath ?: project.voiceOverUri
+        val audioClips = if (audioUri != null && project.voiceOverDurationMs > 0) {
+            listOf(
+                TimelineClip(
+                    id = "audio_track",
+                    startMs = 0L,
+                    durationMs = project.voiceOverDurationMs,
+                    label = "Voice-over",
+                    sourceUri = audioUri,
+                    isVideo = false
+                )
+            )
+        } else emptyList()
+        Timeline(clips = videoClips, audioClips = audioClips)
+    }
+
+    // Real decoded waveform for the audio track — same extractor/logic
+    // PreviewPlayer already uses, prefers the processed (noise/volume)
+    // file when one exists so the two views never disagree.
+    var waveform by remember { mutableStateOf(FloatArray(0)) }
+    LaunchedEffect(project.voiceOverUri, project.processedAudioPath) {
+        val processedPath = project.processedAudioPath
+        waveform = try {
+            if (processedPath != null && File(processedPath).exists()) {
+                WaveformExtractor(context).extract(Uri.fromFile(File(processedPath)))
+            } else {
+                project.voiceOverUri?.let { WaveformExtractor(context).extract(Uri.parse(it)) } ?: FloatArray(0)
+            }
+        } catch (e: Exception) {
+            FloatArray(0)
+        }
+    }
+
+    // Real decoded image thumbnails (one static frame per clip is enough
+    // for a still image — see TimelineView's drawFilmstrip) via the same
+    // cache Preview already uses, so this never re-decodes a file Preview
+    // just decoded a moment ago.
+    var thumbnails by remember { mutableStateOf<Map<String, List<Bitmap>>>(emptyMap()) }
+    LaunchedEffect(timeline) {
+        thumbnails = withContext(Dispatchers.IO) {
+            timeline.mapNotNull { item ->
+                val path = item.prompt.imagePath ?: return@mapNotNull null
+                val bmp = cache?.load(path)
+                    ?: try {
+                        BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = 2 })
+                    } catch (e: Exception) {
+                        null
+                    }
+                bmp?.let { item.prompt.id.toString() to listOf(it) }
+            }.toMap()
+        }
+    }
+
+    AndroidView(
+        modifier = modifier,
+        factory = { ctx -> TimelineView(ctx) },
+        update = { view ->
+            view.trackHeightPx = with(density) { 70.dp.toPx() }
+            view.waveformHeightPx = with(density) { 40.dp.toPx() }
+            view.timeline = modelTimeline
+            view.waveform = waveform
+            view.audioDurationMs = project.voiceOverDurationMs
+            view.clipThumbnails = thumbnails
+        }
+    )
 }
 
 @Composable

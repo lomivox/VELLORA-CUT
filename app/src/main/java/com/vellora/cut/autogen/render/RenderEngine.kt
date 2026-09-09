@@ -36,7 +36,10 @@ sealed class RenderResult {
 object RenderEngine {
 
     private const val FPS = 30
-    private const val TRANSITION_DURATION_SEC = 0.7
+    // Not private: TimelineScreen's live preview uses the exact same value
+    // so the on-screen transition timing matches what RenderEngine actually
+    // produces.
+    const val TRANSITION_DURATION_SEC = 0.7
 
     /**
      * Starts an async render. [onProgress] is called repeatedly with 0f..1f.

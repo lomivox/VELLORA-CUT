@@ -27,6 +27,8 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.graphics.asComposePath
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.GraphicsLayerScope
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -625,6 +627,21 @@ private fun PreviewPlayer(
         idx
     }
     val currentImage = timeline.getOrNull(currentIndex)
+    val nextImage = timeline.getOrNull(currentIndex + 1)
+
+    // Same math RenderEngine actually uses, so the live preview's motion
+    // effect (zoom-in/pan) and transition (crossfade/slide) match the real
+    // rendered mp4 as closely as a static-image Compose layer can — no more
+    // waiting for a full FFmpeg render just to see how a choice looks.
+    val currentStartMs = offsets.getOrNull(currentIndex) ?: 0L
+    val currentDurationMs = currentImage?.durationMs?.coerceAtLeast(1L) ?: 1L
+    val localProgress = ((positionMs - currentStartMs).toFloat() / currentDurationMs.toFloat()).coerceIn(0f, 1f)
+    val transitionDurationMs = (RenderEngine.TRANSITION_DURATION_SEC * 1000).toLong()
+    val transitionWindowStart = (1f - transitionDurationMs.toFloat() / currentDurationMs.toFloat()).coerceIn(0f, 1f)
+    val inTransition = nextImage != null && localProgress >= transitionWindowStart
+    val transitionT = if (inTransition) {
+        ((localProgress - transitionWindowStart) / (1f - transitionWindowStart).coerceAtLeast(0.0001f)).coerceIn(0f, 1f)
+    } else 0f
 
     Column(
         modifier = Modifier
@@ -638,15 +655,50 @@ private fun PreviewPlayer(
             contentAlignment = Alignment.Center
         ) {
             val bitmap = currentImage?.let { rememberDecodedBitmap(it.prompt.imagePath) }
+            val nextBitmap = if (inTransition) nextImage?.let { rememberDecodedBitmap(it.prompt.imagePath) } else null
+
             if (bitmap != null) {
                 Image(
                     bitmap = bitmap,
                     contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            applyLiveMotionAndTransition(
+                                scope = this,
+                                motionEffect = project.motionEffect,
+                                motionProgress = localProgress,
+                                transitionType = project.transitionType,
+                                transitionT = transitionT,
+                                isIncomingLayer = false,
+                                inTransition = inTransition
+                            )
+                        },
                     contentScale = ContentScale.Fit
                 )
             } else {
                 Text(text = "🖼️", fontSize = 40.sp)
+            }
+
+            if (nextBitmap != null) {
+                Image(
+                    bitmap = nextBitmap,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            applyLiveMotionAndTransition(
+                                scope = this,
+                                motionEffect = project.motionEffect,
+                                motionProgress = 0f, // incoming image starts its own motion effect fresh
+                                transitionType = project.transitionType,
+                                transitionT = transitionT,
+                                isIncomingLayer = true,
+                                inTransition = true
+                            )
+                        },
+                    contentScale = ContentScale.Fit
+                )
             }
         }
 
@@ -965,6 +1017,53 @@ private fun EditDurationDialog(
 private fun formatMs(ms: Long): String {
     val totalSec = ms / 1000.0
     return "%.1fs".format(totalSec)
+}
+
+/**
+ * Applies the SAME motion-effect (zoom-in/pan) and transition
+ * (crossfade/slide) math RenderEngine bakes into the real rendered mp4 —
+ * but as a live Compose graphicsLayer transform, so the preview shows a
+ * close visual approximation without running FFmpeg. [motionProgress] is
+ * 0f..1f through this specific layer's own on-screen duration.
+ * [isIncomingLayer] is the "next" image fading/sliding IN during a
+ * transition; the "current" image is always the outgoing layer.
+ */
+private fun applyLiveMotionAndTransition(
+    scope: GraphicsLayerScope,
+    motionEffect: String,
+    motionProgress: Float,
+    transitionType: String,
+    transitionT: Float,
+    isIncomingLayer: Boolean,
+    inTransition: Boolean
+) {
+    when (motionEffect) {
+        MotionEffect.PAN -> {
+            scope.scaleX = 1.15f
+            scope.scaleY = 1.15f
+            scope.translationX = (motionProgress - 0.5f) * scope.size.width * 0.18f
+        }
+        else -> { // ZOOM_IN
+            val scale = 1f + 0.3f * motionProgress
+            scope.scaleX = scale
+            scope.scaleY = scale
+        }
+    }
+
+    if (inTransition) {
+        when (transitionType) {
+            TransitionType.SLIDE -> {
+                scope.translationX += if (isIncomingLayer) {
+                    scope.size.width * (1f - transitionT)
+                } else {
+                    -scope.size.width * transitionT
+                }
+            }
+            else -> { // CROSSFADE
+                scope.alpha = if (isIncomingLayer) transitionT else 1f - transitionT
+            }
+        }
+    }
 }
 
 /**

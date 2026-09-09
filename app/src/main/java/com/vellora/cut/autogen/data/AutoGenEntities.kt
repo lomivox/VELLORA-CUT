@@ -36,7 +36,18 @@ data class AutoGenProjectEntity(
     /** Transition style between consecutive images — see [TransitionType]. */
     val transitionType: String = TransitionType.CROSSFADE,
     /** Per-image motion effect — see [MotionEffect]. */
-    val motionEffect: String = MotionEffect.ZOOM_IN
+    val motionEffect: String = MotionEffect.ZOOM_IN,
+    /** Real FFmpeg noise-reduction strength on the voice-over, 0-100 (maps
+     * to afftdn's nr parameter, 0-97dB). 0 = no noise reduction applied. */
+    val noiseReductionPercent: Int = 0,
+    /** Real FFmpeg volume gain on the voice-over, 0-500 (100 = original
+     * volume, unchanged). Applied via the `volume=` audio filter. */
+    val volumePercent: Int = 100,
+    /** Local path to the FFmpeg-processed voice-over (noise-reduction +
+     * volume already baked in) — regenerated whenever either setting
+     * changes. Null until first processed; both the live PreviewPlayer and
+     * RenderEngine prefer this over the raw picked file when present. */
+    val processedAudioPath: String? = null
 )
 
 /** Values for [AutoGenProjectEntity.timelineMode]. */

@@ -46,6 +46,7 @@ import com.vellora.cut.autogen.data.TimelineMode
 import com.vellora.cut.autogen.data.TransitionType
 import com.vellora.cut.autogen.playback.ImageBitmapCache
 import com.vellora.cut.autogen.playback.WaveformExtractor
+import com.vellora.cut.autogen.render.AudioProcessor
 import com.vellora.cut.autogen.render.RenderEngine
 import com.vellora.cut.autogen.render.RenderResult
 import com.vellora.cut.autogen.timeline.TimelineImage
@@ -105,6 +106,9 @@ fun TimelineScreen(
     var previewingFile by remember { mutableStateOf<File?>(null) }
     var editingDurationFor by remember { mutableStateOf<com.vellora.cut.autogen.data.PromptEntity?>(null) }
     var showExportOverlay by remember { mutableStateOf(false) }
+    var showNoiseSheet by remember { mutableStateOf(false) }
+    var showVolumeSheet by remember { mutableStateOf(false) }
+    var audioProcessing by remember { mutableStateOf(false) }
     var pendingGallerySaveFile by remember { mutableStateOf<File?>(null) }
 
     val galleryPermissionLauncher = rememberLauncherForActivityResult(
@@ -450,8 +454,8 @@ fun TimelineScreen(
                         ToolbarAction(R.drawable.ic_trim, "Split") { },
                         ToolbarAction(R.drawable.ic_text, "Text") { },
                         ToolbarAction(R.drawable.ic_audio, "Audio") { audioLauncher.launch("audio/*") },
-                        ToolbarAction(R.drawable.ic_volume, "Volume") { },
-                        ToolbarAction(R.drawable.ic_noise, "Noise") { },
+                        ToolbarAction(R.drawable.ic_volume, "Volume") { showVolumeSheet = true },
+                        ToolbarAction(R.drawable.ic_noise, "Noise") { showNoiseSheet = true },
                         ToolbarAction(R.drawable.ic_speed, "Speed") { },
                         ToolbarAction(R.drawable.ic_filter, "Filter") { },
                         ToolbarAction(R.drawable.ic_rotate, "Rotate") { },
@@ -512,6 +516,82 @@ fun TimelineScreen(
                 }
             )
         }
+
+        if (showNoiseSheet) {
+            SmallSliderSheet(
+                title = "Noise Reduction",
+                subtitle = "اصل FFmpeg denoiser (afftdn) — 0% مطلب کچھ نہیں لگا",
+                value = currentProject.noiseReductionPercent,
+                valueRange = 0..100,
+                valueLabel = { "$it%" },
+                isProcessing = audioProcessing,
+                onDismiss = { showNoiseSheet = false },
+                onApply = { percent ->
+                    val voiceOverUri = currentProject.voiceOverUri
+                    if (voiceOverUri == null) {
+                        showNoiseSheet = false
+                        return@SmallSliderSheet
+                    }
+                    audioProcessing = true
+                    AudioProcessor.process(
+                        context = context,
+                        voiceOverUri = voiceOverUri,
+                        noiseReductionPercent = percent,
+                        volumePercent = currentProject.volumePercent,
+                        onComplete = { file ->
+                            audioProcessing = false
+                            showNoiseSheet = false
+                            scope.launch {
+                                val updated = currentProject.copy(
+                                    noiseReductionPercent = percent,
+                                    processedAudioPath = file?.absolutePath ?: currentProject.processedAudioPath
+                                )
+                                dao.updateProject(updated)
+                                project = updated
+                            }
+                        }
+                    )
+                }
+            )
+        }
+
+        if (showVolumeSheet) {
+            SmallSliderSheet(
+                title = "Volume",
+                subtitle = "اصل FFmpeg gain (volume filter) — 100% مطلب اصل volume",
+                value = currentProject.volumePercent,
+                valueRange = 0..500,
+                valueLabel = { "$it%" },
+                isProcessing = audioProcessing,
+                onDismiss = { showVolumeSheet = false },
+                onApply = { percent ->
+                    val voiceOverUri = currentProject.voiceOverUri
+                    if (voiceOverUri == null) {
+                        showVolumeSheet = false
+                        return@SmallSliderSheet
+                    }
+                    audioProcessing = true
+                    AudioProcessor.process(
+                        context = context,
+                        voiceOverUri = voiceOverUri,
+                        noiseReductionPercent = currentProject.noiseReductionPercent,
+                        volumePercent = percent,
+                        onComplete = { file ->
+                            audioProcessing = false
+                            showVolumeSheet = false
+                            scope.launch {
+                                val updated = currentProject.copy(
+                                    volumePercent = percent,
+                                    processedAudioPath = file?.absolutePath ?: currentProject.processedAudioPath
+                                )
+                                dao.updateProject(updated)
+                                project = updated
+                            }
+                        }
+                    )
+                }
+            )
+        }
     }
     }
 }
@@ -541,21 +621,33 @@ private fun PreviewPlayer(
     // Real decoded-audio waveform (see WaveformExtractor's doc comment,
     // ported from VELLORA-ENGINE) — purely decorative under the scrub
     // slider, computed once per voice-over file.
-    LaunchedEffect(project.voiceOverUri) {
-        val uriString = project.voiceOverUri
-        waveform = if (uriString != null) {
-            try { WaveformExtractor(context).extract(Uri.parse(uriString)) } catch (e: Exception) { FloatArray(0) }
-        } else {
+    LaunchedEffect(project.voiceOverUri, project.processedAudioPath) {
+        val processedPath = project.processedAudioPath
+        waveform = try {
+            if (processedPath != null && File(processedPath).exists()) {
+                WaveformExtractor(context).extract(Uri.fromFile(File(processedPath)))
+            } else {
+                project.voiceOverUri?.let { WaveformExtractor(context).extract(Uri.parse(it)) } ?: FloatArray(0)
+            }
+        } catch (e: Exception) {
             FloatArray(0)
         }
     }
 
-    DisposableEffect(project.voiceOverUri) {
+    DisposableEffect(project.voiceOverUri, project.processedAudioPath) {
         val uriString = project.voiceOverUri
+        val processedPath = project.processedAudioPath
         val mp = if (uriString != null) {
             try {
                 MediaPlayer().apply {
-                    setDataSource(context, Uri.parse(uriString))
+                    // Prefer the noise-reduced/volume-adjusted file (real
+                    // FFmpeg processing) so Preview actually plays what the
+                    // person just set, not the untouched original.
+                    if (processedPath != null && File(processedPath).exists()) {
+                        setDataSource(processedPath)
+                    } else {
+                        setDataSource(context, Uri.parse(uriString))
+                    }
                     setOnPreparedListener { isPrepared = true }
                     setOnCompletionListener {
                         onIsPlayingChange(false)
@@ -1017,6 +1109,82 @@ private fun EditDurationDialog(
 private fun formatMs(ms: Long): String {
     val totalSec = ms / 1000.0
     return "%.1fs".format(totalSec)
+}
+
+/**
+ * One small bottom card with a title + slider + Apply button — used for
+ * both Noise Reduction and Volume so far. Deliberately compact (a card
+ * anchored to the bottom, not a full page) per explicit feedback that an
+ * earlier full-screen sheet was too much for a single slider control.
+ */
+@Composable
+private fun SmallSliderSheet(
+    title: String,
+    subtitle: String,
+    value: Int,
+    valueRange: IntRange,
+    valueLabel: (Int) -> String,
+    isProcessing: Boolean,
+    onDismiss: () -> Unit,
+    onApply: (Int) -> Unit
+) {
+    var sliderValue by remember { mutableStateOf(value.toFloat()) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.5f))
+            .clickable(onClick = onDismiss)
+    ) {
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp))
+                .background(SurfaceDark)
+                .clickable(enabled = false) { } // absorbs taps so they don't fall through to onDismiss
+                .padding(20.dp)
+        ) {
+            Text(text = title, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(text = subtitle, color = TextSecondary, fontSize = 11.sp)
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(text = valueLabel(sliderValue.toInt()), color = CyanPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            }
+            Slider(
+                value = sliderValue,
+                valueRange = valueRange.first.toFloat()..valueRange.last.toFloat(),
+                onValueChange = { sliderValue = it },
+                colors = SliderDefaults.colors(thumbColor = CyanPrimary, activeTrackColor = CyanPrimary),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            if (isProcessing) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(text = "Processing (real FFmpeg)…", color = TextSecondary, fontSize = 12.sp)
+                }
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(
+                        onClick = { onApply(sliderValue.toInt()) },
+                        colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
+                    ) {
+                        Text(text = "Apply", color = BackgroundDark, fontWeight = FontWeight.Bold)
+                    }
+                    OutlinedButton(onClick = onDismiss) {
+                        Text(text = "Cancel", color = TextPrimary)
+                    }
+                }
+            }
+        }
+    }
 }
 
 /**

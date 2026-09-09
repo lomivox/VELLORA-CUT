@@ -63,7 +63,16 @@ object RenderEngine {
 
         val voiceOverFile: File
         try {
-            voiceOverFile = resolveVoiceOverFile(context, project.voiceOverUri, workDir)
+            // Prefer the noise-reduced/volume-adjusted copy (real FFmpeg
+            // processing, see AudioProcessor) over the raw picked file,
+            // when one exists — so the export actually has the effect the
+            // person heard in Preview, not the untouched original.
+            val processedPath = project.processedAudioPath
+            voiceOverFile = if (processedPath != null && File(processedPath).exists()) {
+                File(processedPath)
+            } else {
+                resolveVoiceOverFile(context, project.voiceOverUri, workDir)
+            }
         } catch (e: Exception) {
             onComplete(RenderResult.Failed("Voice-over file open nahi ho saka: ${e.message}", ""))
             return null

@@ -25,11 +25,20 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
     }
 }
 
+/** v5 -> v6: added real noise-reduction + volume-boost fields on the project. */
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE autogen_projects ADD COLUMN noiseReductionPercent INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE autogen_projects ADD COLUMN volumePercent INTEGER NOT NULL DEFAULT 100")
+        db.execSQL("ALTER TABLE autogen_projects ADD COLUMN processedAudioPath TEXT")
+    }
+}
+
 @Database(
     entities = [
         AutoGenProjectEntity::class, PromptEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -45,7 +54,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "vellora.db"
                 )
-                    .addMigrations(MIGRATION_4_5)
+                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6)
                     // Safety net ONLY for a version jump with no migration
                     // listed above (e.g. someone on a version older than 4,
                     // or a future bump where a Migration was forgotten) —

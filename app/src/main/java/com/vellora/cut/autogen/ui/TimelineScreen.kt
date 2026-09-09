@@ -108,6 +108,9 @@ fun TimelineScreen(
     var showExportOverlay by remember { mutableStateOf(false) }
     var showNoiseSheet by remember { mutableStateOf(false) }
     var showVolumeSheet by remember { mutableStateOf(false) }
+    var showSyncSheet by remember { mutableStateOf(false) }
+    var showTransitionSheet by remember { mutableStateOf(false) }
+    var showMotionSheet by remember { mutableStateOf(false) }
     var audioProcessing by remember { mutableStateOf(false) }
     var pendingGallerySaveFile by remember { mutableStateOf<File?>(null) }
 
@@ -287,92 +290,11 @@ fun TimelineScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                Text(text = "Sync Mode", color = TextSecondary, fontSize = 12.sp)
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ModeChip(
-                        label = "Scale images",
-                        selected = currentProject.timelineMode == TimelineMode.SCALE,
-                        onClick = {
-                            scope.launch {
-                                val updated = currentProject.copy(timelineMode = TimelineMode.SCALE)
-                                dao.updateProject(updated)
-                                project = updated
-                            }
-                        }
-                    )
-                    ModeChip(
-                        label = "Hold last image",
-                        selected = currentProject.timelineMode == TimelineMode.HOLD_LAST,
-                        onClick = {
-                            scope.launch {
-                                val updated = currentProject.copy(timelineMode = TimelineMode.HOLD_LAST)
-                                dao.updateProject(updated)
-                                project = updated
-                            }
-                        }
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Text(text = "Transition", color = TextSecondary, fontSize = 12.sp)
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ModeChip(
-                        label = "Crossfade",
-                        selected = currentProject.transitionType == TransitionType.CROSSFADE,
-                        onClick = {
-                            scope.launch {
-                                val updated = currentProject.copy(transitionType = TransitionType.CROSSFADE)
-                                dao.updateProject(updated)
-                                project = updated
-                            }
-                        }
-                    )
-                    ModeChip(
-                        label = "Slide",
-                        selected = currentProject.transitionType == TransitionType.SLIDE,
-                        onClick = {
-                            scope.launch {
-                                val updated = currentProject.copy(transitionType = TransitionType.SLIDE)
-                                dao.updateProject(updated)
-                                project = updated
-                            }
-                        }
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Text(text = "Motion Effect", color = TextSecondary, fontSize = 12.sp)
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ModeChip(
-                        label = "Zoom-In",
-                        selected = currentProject.motionEffect == MotionEffect.ZOOM_IN,
-                        onClick = {
-                            scope.launch {
-                                val updated = currentProject.copy(motionEffect = MotionEffect.ZOOM_IN)
-                                dao.updateProject(updated)
-                                project = updated
-                            }
-                        }
-                    )
-                    ModeChip(
-                        label = "Pan",
-                        selected = currentProject.motionEffect == MotionEffect.PAN,
-                        onClick = {
-                            scope.launch {
-                                val updated = currentProject.copy(motionEffect = MotionEffect.PAN)
-                                dao.updateProject(updated)
-                                project = updated
-                            }
-                        }
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
+                // Sync Mode / Transition / Motion Effect chips used to sit here
+                // inline, forcing a scroll past them to reach the Images list
+                // below. They now live in their own bottom sheets (Sync,
+                // Transition, Motion toolbar buttons) so this column only
+                // shows the summary + the images list.
 
                 Text(text = "Images (${timeline.size})", color = TextSecondary, fontSize = 12.sp)
                 if (doneImages.isEmpty()) {
@@ -457,9 +379,9 @@ fun TimelineScreen(
                         ToolbarAction(R.drawable.ic_volume, "Volume") { showVolumeSheet = true },
                         ToolbarAction(R.drawable.ic_noise, "Noise") { showNoiseSheet = true },
                         ToolbarAction(R.drawable.ic_speed, "Speed") { },
-                        ToolbarAction(R.drawable.ic_filter, "Filter") { },
-                        ToolbarAction(R.drawable.ic_rotate, "Rotate") { },
-                        ToolbarAction(R.drawable.ic_overlay, "Overlay") { },
+                        ToolbarAction(R.drawable.ic_filter, "Transition") { showTransitionSheet = true },
+                        ToolbarAction(R.drawable.ic_rotate, "Motion") { showMotionSheet = true },
+                        ToolbarAction(R.drawable.ic_overlay, "Sync") { showSyncSheet = true },
                         ToolbarAction(R.drawable.ic_ratio, "Ratio") {
                             scope.launch {
                                 val updated = currentProject.copy(
@@ -593,6 +515,108 @@ fun TimelineScreen(
                             }
                         )
                     }
+                )
+            }
+        }
+
+        if (showSyncSheet) {
+            currentProject?.let { proj ->
+                ChoiceBottomSheet(
+                    title = "Sync Mode",
+                    subtitle = "Images duration ke sath kaise sync hongi",
+                    options = listOf(
+                        ChoiceOption(
+                            label = "Scale images",
+                            selected = proj.timelineMode == TimelineMode.SCALE,
+                            onSelect = {
+                                scope.launch {
+                                    val updated = proj.copy(timelineMode = TimelineMode.SCALE)
+                                    dao.updateProject(updated)
+                                    project = updated
+                                }
+                            }
+                        ),
+                        ChoiceOption(
+                            label = "Hold last image",
+                            selected = proj.timelineMode == TimelineMode.HOLD_LAST,
+                            onSelect = {
+                                scope.launch {
+                                    val updated = proj.copy(timelineMode = TimelineMode.HOLD_LAST)
+                                    dao.updateProject(updated)
+                                    project = updated
+                                }
+                            }
+                        )
+                    ),
+                    onDismiss = { showSyncSheet = false }
+                )
+            }
+        }
+
+        if (showTransitionSheet) {
+            currentProject?.let { proj ->
+                ChoiceBottomSheet(
+                    title = "Transition",
+                    subtitle = "Do images ke darmiyan cut ka style",
+                    options = listOf(
+                        ChoiceOption(
+                            label = "Crossfade",
+                            selected = proj.transitionType == TransitionType.CROSSFADE,
+                            onSelect = {
+                                scope.launch {
+                                    val updated = proj.copy(transitionType = TransitionType.CROSSFADE)
+                                    dao.updateProject(updated)
+                                    project = updated
+                                }
+                            }
+                        ),
+                        ChoiceOption(
+                            label = "Slide",
+                            selected = proj.transitionType == TransitionType.SLIDE,
+                            onSelect = {
+                                scope.launch {
+                                    val updated = proj.copy(transitionType = TransitionType.SLIDE)
+                                    dao.updateProject(updated)
+                                    project = updated
+                                }
+                            }
+                        )
+                    ),
+                    onDismiss = { showTransitionSheet = false }
+                )
+            }
+        }
+
+        if (showMotionSheet) {
+            currentProject?.let { proj ->
+                ChoiceBottomSheet(
+                    title = "Motion Effect",
+                    subtitle = "Har image par live camera movement",
+                    options = listOf(
+                        ChoiceOption(
+                            label = "Zoom-In",
+                            selected = proj.motionEffect == MotionEffect.ZOOM_IN,
+                            onSelect = {
+                                scope.launch {
+                                    val updated = proj.copy(motionEffect = MotionEffect.ZOOM_IN)
+                                    dao.updateProject(updated)
+                                    project = updated
+                                }
+                            }
+                        ),
+                        ChoiceOption(
+                            label = "Pan",
+                            selected = proj.motionEffect == MotionEffect.PAN,
+                            onSelect = {
+                                scope.launch {
+                                    val updated = proj.copy(motionEffect = MotionEffect.PAN)
+                                    dao.updateProject(updated)
+                                    project = updated
+                                }
+                            }
+                        )
+                    ),
+                    onDismiss = { showMotionSheet = false }
                 )
             }
         }
@@ -1186,6 +1210,68 @@ private fun SmallSliderSheet(
                         Text(text = "Cancel", color = TextPrimary)
                     }
                 }
+            }
+        }
+    }
+}
+
+/** One tappable choice inside a [ChoiceBottomSheet] — e.g. "Crossfade". */
+private data class ChoiceOption(
+    val label: String,
+    val selected: Boolean,
+    val onSelect: () -> Unit
+)
+
+/**
+ * Same small bottom-card look as [SmallSliderSheet] (anchored to the
+ * bottom, not full-screen) but for chip-style choices instead of a
+ * slider — used for Sync Mode, Transition, and Motion Effect, which used
+ * to sit inline in the scrollable timeline column. Picking an option
+ * applies immediately (same behaviour the inline chips always had); this
+ * sheet is just a compact place to reach them from the toolbar instead of
+ * scrolling past them.
+ */
+@Composable
+private fun ChoiceBottomSheet(
+    title: String,
+    subtitle: String,
+    options: List<ChoiceOption>,
+    onDismiss: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.5f))
+            .clickable(onClick = onDismiss)
+    ) {
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp))
+                .background(SurfaceDark)
+                .clickable(enabled = false) { } // absorbs taps so they don't fall through to onDismiss
+                .padding(20.dp)
+        ) {
+            Text(text = title, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(text = subtitle, color = TextSecondary, fontSize = 11.sp)
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                options.forEach { option ->
+                    ModeChip(
+                        label = option.label,
+                        selected = option.selected,
+                        onClick = option.onSelect
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            OutlinedButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+                Text(text = "Done", color = TextPrimary)
             }
         }
     }

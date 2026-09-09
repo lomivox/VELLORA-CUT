@@ -17,7 +17,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -167,6 +166,22 @@ fun TimelineScreen(
     ) { uri ->
         val proj = project
         if (uri != null && proj != null) {
+            // Without this, the read permission GetContent() grants is only
+            // valid for this app session — reopening the project later
+            // (or just restarting the app) throws a SecurityException when
+            // MediaMetadataRetriever/WaveformExtractor/MediaPlayer try to
+            // read the same content:// uri again, and every catch block
+            // around those calls silently swallows it — which is what made
+            // the audio track look "empty" (no waveform) intermittently.
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (e: SecurityException) {
+                // Some providers (e.g. certain file managers) don't grant
+                // persistable permission — audio still works this session.
+            }
             val durationMs = try {
                 val retriever = MediaMetadataRetriever()
                 try {
@@ -288,104 +303,81 @@ fun TimelineScreen(
                 )
             }
 
-            // ---- TIMELINE (~30%) — content untouched, only resized to fit the new layout ----
-            Column(
+            // ---- TIMELINE (~30%) — FIXED area, no scroll: only the
+            // video+audio timeline lives here now, exactly like the
+            // reference (Preview above, timeline below, nothing else
+            // sharing this space so nothing can push it into a scroll).
+            // The old SummaryCard + "Timeline (N images)" label + the
+            // RenderSection duplicate (progress/preview/share) used to sit
+            // in this same scrollable Column — RenderSection was fully
+            // redundant anyway (the top-bar Export button + its
+            // ExportProgressOverlay already show the same progress/preview
+            // /share), so it's removed here rather than kept and hidden.
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(0.30f)
-                    .verticalScroll(rememberScrollState())
-                    .padding(20.dp)
+                    .padding(horizontal = 20.dp, vertical = 10.dp)
             ) {
-                SummaryCard(imageCount = doneImages.size, totalMs = totalMs, voiceOverMs = voiceOverMs)
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Sync Mode / Transition / Motion Effect chips used to sit here
-                // inline, forcing a scroll past them to reach the Images list
-                // below. They now live in their own bottom sheets (Sync,
-                // Transition, Motion toolbar buttons) so this column only
-                // shows the summary + the images list.
-
-                Text(text = "Timeline (${timeline.size} images)", color = TextSecondary, fontSize = 12.sp)
                 if (doneImages.isEmpty()) {
-                    Spacer(modifier = Modifier.height(6.dp))
                     Text(
                         text = "ابھی کوئی image تیار نہیں — پہلے Prompts screen پر جا کر Generate All چلائیں",
                         color = TextSecondary,
-                        fontSize = 11.sp
+                        fontSize = 12.sp,
+                        modifier = Modifier.align(Alignment.Center)
                     )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                VideoAudioTimelineView(
-                    project = currentProject,
-                    timeline = timeline,
-                    playheadMs = previewPositionMs,
-                    onScrubStart = { if (isPlaying) togglePlayPause?.invoke() },
-                    onScrub = { ms -> seekPreviewTo?.invoke(ms) },
-                    onClipTapped = { clipId ->
-                        editingDurationFor = timeline.find { it.prompt.id.toString() == clipId }?.prompt
-                    },
-                    onJoinTapped = { showTransitionSheet = true },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(150.dp)
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                val triggerRender: () -> Unit = {
-                    showExportOverlay = true
-                    renderState = RenderUiState.Rendering(0f)
-                    RenderEngine.render(
-                        context = context,
+                } else {
+                    VideoAudioTimelineView(
                         project = currentProject,
                         timeline = timeline,
-                        totalDurationMs = totalMs,
-                        onProgress = { fraction ->
-                            renderState = RenderUiState.Rendering(fraction)
+                        playheadMs = previewPositionMs,
+                        onScrubStart = { if (isPlaying) togglePlayPause?.invoke() },
+                        onScrub = { ms -> seekPreviewTo?.invoke(ms) },
+                        onClipTapped = { clipId ->
+                            editingDurationFor = timeline.find { it.prompt.id.toString() == clipId }?.prompt
                         },
-                        onComplete = { result ->
-                            when (result) {
-                                is RenderResult.Success -> {
-                                    renderState = RenderUiState.Done(result.outputFile)
-                                    onSaveToGallery(result.outputFile) // automatic — no button needed
-                                    scope.launch {
-                                        val updated = currentProject.copy(
-                                            status = AutoGenProjectStatus.RENDERED,
-                                            renderedFilePath = result.outputFile.absolutePath
-                                        )
-                                        dao.updateProject(updated)
-                                        project = updated
-                                    }
-                                }
-                                is RenderResult.Failed -> {
-                                    renderState = RenderUiState.Error(result.message)
-                                }
-                            }
-                        }
+                        onJoinTapped = { showTransitionSheet = true },
+                        modifier = Modifier.fillMaxSize()
                     )
                 }
-                SideEffect { startRender = triggerRender }
+            }
 
-                RenderSection(
-                    state = renderState,
-                    onRenderClick = triggerRender,
-                    enabled = doneImages.isNotEmpty(),
-                    onPreviewClick = { file -> previewingFile = file },
-                    onShareClick = { file ->
-                        val uri = FileProvider.getUriForFile(
-                            context, "${context.packageName}.fileprovider", file
-                        )
-                        val intent = Intent(Intent.ACTION_SEND).apply {
-                            type = "video/mp4"
-                            putExtra(Intent.EXTRA_STREAM, uri)
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            // Render is triggered from the top-bar Export button, not from
+            // here — this just defines what it runs. No UI of its own, so
+            // it doesn't affect the fixed timeline area above.
+            val triggerRender: () -> Unit = {
+                showExportOverlay = true
+                renderState = RenderUiState.Rendering(0f)
+                RenderEngine.render(
+                    context = context,
+                    project = currentProject,
+                    timeline = timeline,
+                    totalDurationMs = totalMs,
+                    onProgress = { fraction ->
+                        renderState = RenderUiState.Rendering(fraction)
+                    },
+                    onComplete = { result ->
+                        when (result) {
+                            is RenderResult.Success -> {
+                                renderState = RenderUiState.Done(result.outputFile)
+                                onSaveToGallery(result.outputFile) // automatic — no button needed
+                                scope.launch {
+                                    val updated = currentProject.copy(
+                                        status = AutoGenProjectStatus.RENDERED,
+                                        renderedFilePath = result.outputFile.absolutePath
+                                    )
+                                    dao.updateProject(updated)
+                                    project = updated
+                                }
+                            }
+                            is RenderResult.Failed -> {
+                                renderState = RenderUiState.Error(result.message)
+                            }
                         }
-                        context.startActivity(Intent.createChooser(intent, "Episode share karein"))
                     }
                 )
-                Spacer(modifier = Modifier.height(20.dp))
             }
+            SideEffect { startRender = triggerRender }
 
             // ---- NAVIGATION (~9.8%) — extracted from the old Editor; layout only, no button functions wired yet ----
             Box(modifier = Modifier.fillMaxWidth().weight(0.098f)) {

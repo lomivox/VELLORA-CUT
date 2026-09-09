@@ -1,5 +1,6 @@
 package com.vellora.cut.autogen.ui
 
+import android.content.Intent
 import android.media.MediaMetadataRetriever
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -43,6 +44,23 @@ fun NewAutoGenProjectScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         if (uri != null) {
+            // Same fix already applied to Timeline's Audio picker — without
+            // this, GetContent()'s read permission is only valid for this
+            // app session; opening the project later (or even just
+            // navigating away and back) throws SecurityException when
+            // MediaPlayer/WaveformExtractor try to read the same uri again,
+            // which is exactly "audio doesn't play, no waveform" for
+            // anyone who picked the voice-over here (project creation)
+            // rather than later from the Timeline screen.
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (e: SecurityException) {
+                // Some providers don't grant persistable permission — audio
+                // still works for this session.
+            }
             voiceOverUri = uri.toString()
             voiceOverDurationMs = try {
                 val retriever = MediaMetadataRetriever()

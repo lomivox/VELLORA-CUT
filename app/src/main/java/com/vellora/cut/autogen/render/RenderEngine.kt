@@ -61,17 +61,21 @@ object RenderEngine {
         }
         val outputFile = File(outputDir, "episode_${project.id}_${System.currentTimeMillis()}.mp4")
 
-        val voiceOverFile: File
+        val voiceOverFile: File?
         try {
             // Prefer the noise-reduced/volume-adjusted copy (real FFmpeg
             // processing, see AudioProcessor) over the raw picked file,
             // when one exists — so the export actually has the effect the
             // person heard in Preview, not the untouched original.
+            // Audio is OPTIONAL: a project with no voice-over renders a
+            // real (silent) mp4 from the images alone instead of failing.
             val processedPath = project.processedAudioPath
             voiceOverFile = if (processedPath != null && File(processedPath).exists()) {
                 File(processedPath)
-            } else {
+            } else if (project.voiceOverUri != null) {
                 resolveVoiceOverFile(context, project.voiceOverUri, workDir)
+            } else {
+                null
             }
         } catch (e: Exception) {
             onComplete(RenderResult.Failed("Voice-over file open nahi ho saka: ${e.message}", ""))
@@ -127,7 +131,7 @@ object RenderEngine {
 
     private fun buildArguments(
         timeline: List<TimelineImage>,
-        voiceOverFile: File,
+        voiceOverFile: File?,
         width: Int,
         height: Int,
         transitionType: String,
@@ -153,23 +157,24 @@ object RenderEngine {
             }
             args += listOf("-loop", "1", "-t", "%.3f".format(inputLengths[i]), "-i", path)
         }
-        args += listOf("-i", voiceOverFile.absolutePath)
         val voiceOverInputIndex = n
+        if (voiceOverFile != null) {
+            args += listOf("-i", voiceOverFile.absolutePath)
+        }
 
         val filterComplex = buildFilterComplex(
             n, inputLengths, durationsSec, width, height, transitionType, motionEffect
         )
 
+        args += listOf("-filter_complex", filterComplex.script, "-map", "[${filterComplex.finalVideoLabel}]")
+        if (voiceOverFile != null) {
+            args += listOf("-map", "$voiceOverInputIndex:a:0", "-c:a", "aac", "-b:a", "192k", "-shortest")
+        }
         args += listOf(
-            "-filter_complex", filterComplex.script,
-            "-map", "[${filterComplex.finalVideoLabel}]",
-            "-map", "$voiceOverInputIndex:a:0",
             "-r", FPS.toString(),
             "-c:v", "h264_mediacodec",
             "-b:v", "6M",
             "-pix_fmt", "yuv420p",
-            "-c:a", "aac", "-b:a", "192k",
-            "-shortest",
             "-movflags", "+faststart",
             outputFile.absolutePath
         )

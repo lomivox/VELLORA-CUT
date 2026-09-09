@@ -22,6 +22,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidPath
@@ -787,17 +788,41 @@ private fun PreviewPlayer(
         ((localProgress - transitionWindowStart) / (1f - transitionWindowStart).coerceAtLeast(0.0001f)).coerceIn(0f, 1f)
     } else 0f
 
+    val aspectRatio = if (project.resolution == "tiktok") 9f / 16f else 16f / 9f
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
     ) {
-        Box(
+        // BoxWithConstraints so the actual available width/height are known
+        // — needed to correctly fit a 9:16 (TikTok) or 16:9 (YouTube) frame
+        // inside whatever space this preview area has, exactly like the
+        // real render's frame, instead of stretching to fill a fixed
+        // rectangle regardless of the project's chosen resolution.
+        BoxWithConstraints(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth(),
             contentAlignment = Alignment.Center
         ) {
+            val fittedWidth = minOf(maxWidth, maxHeight * aspectRatio)
+            val fittedHeight = fittedWidth / aspectRatio
+
+            Box(
+                modifier = Modifier
+                    .width(fittedWidth)
+                    .height(fittedHeight)
+                    // Zoom-In motion effect scales the image up beyond 1.0x
+                    // via graphicsLayer — without clipping, the scaled-up
+                    // image rendered right past this frame's edges and
+                    // overlapped whatever was above/below (top bar,
+                    // controls, timeline). clipToBounds() confines it
+                    // strictly inside the frame, same as a real video
+                    // player would.
+                    .clipToBounds(),
+                contentAlignment = Alignment.Center
+            ) {
             val bitmap = currentImage?.let { rememberDecodedBitmap(it.prompt.imagePath) }
             val nextBitmap = if (inTransition) nextImage?.let { rememberDecodedBitmap(it.prompt.imagePath) } else null
 
@@ -843,6 +868,7 @@ private fun PreviewPlayer(
                         },
                     contentScale = ContentScale.Fit
                 )
+            }
             }
         }
 

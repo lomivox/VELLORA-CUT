@@ -518,79 +518,83 @@ fun TimelineScreen(
         }
 
         if (showNoiseSheet) {
-            SmallSliderSheet(
-                title = "Noise Reduction",
-                subtitle = "اصل FFmpeg denoiser (afftdn) — 0% مطلب کچھ نہیں لگا",
-                value = currentProject.noiseReductionPercent,
-                valueRange = 0..100,
-                valueLabel = { "$it%" },
-                isProcessing = audioProcessing,
-                onDismiss = { showNoiseSheet = false },
-                onApply = { percent ->
-                    val voiceOverUri = currentProject.voiceOverUri
-                    if (voiceOverUri == null) {
-                        showNoiseSheet = false
-                        return@SmallSliderSheet
-                    }
-                    audioProcessing = true
-                    AudioProcessor.process(
-                        context = context,
-                        voiceOverUri = voiceOverUri,
-                        noiseReductionPercent = percent,
-                        volumePercent = currentProject.volumePercent,
-                        onComplete = { file ->
-                            audioProcessing = false
+            currentProject?.let { proj ->
+                SmallSliderSheet(
+                    title = "Noise Reduction",
+                    subtitle = "اصل FFmpeg denoiser (afftdn) — 0% مطلب کچھ نہیں لگا",
+                    value = proj.noiseReductionPercent,
+                    valueRange = 0..100,
+                    valueLabel = { "$it%" },
+                    isProcessing = audioProcessing,
+                    onDismiss = { showNoiseSheet = false },
+                    onApply = { percent ->
+                        val voiceOverUri = proj.voiceOverUri
+                        if (voiceOverUri == null) {
                             showNoiseSheet = false
-                            scope.launch {
-                                val updated = currentProject.copy(
-                                    noiseReductionPercent = percent,
-                                    processedAudioPath = file?.absolutePath ?: currentProject.processedAudioPath
-                                )
-                                dao.updateProject(updated)
-                                project = updated
-                            }
+                            return@SmallSliderSheet
                         }
-                    )
-                }
-            )
+                        audioProcessing = true
+                        AudioProcessor.process(
+                            context = context,
+                            voiceOverUri = voiceOverUri,
+                            noiseReductionPercent = percent,
+                            volumePercent = proj.volumePercent,
+                            onComplete = { file ->
+                                audioProcessing = false
+                                showNoiseSheet = false
+                                scope.launch {
+                                    val updated = proj.copy(
+                                        noiseReductionPercent = percent,
+                                        processedAudioPath = file?.absolutePath ?: proj.processedAudioPath
+                                    )
+                                    dao.updateProject(updated)
+                                    project = updated
+                                }
+                            }
+                        )
+                    }
+                )
+            }
         }
 
         if (showVolumeSheet) {
-            SmallSliderSheet(
-                title = "Volume",
-                subtitle = "اصل FFmpeg gain (volume filter) — 100% مطلب اصل volume",
-                value = currentProject.volumePercent,
-                valueRange = 0..500,
-                valueLabel = { "$it%" },
-                isProcessing = audioProcessing,
-                onDismiss = { showVolumeSheet = false },
-                onApply = { percent ->
-                    val voiceOverUri = currentProject.voiceOverUri
-                    if (voiceOverUri == null) {
-                        showVolumeSheet = false
-                        return@SmallSliderSheet
-                    }
-                    audioProcessing = true
-                    AudioProcessor.process(
-                        context = context,
-                        voiceOverUri = voiceOverUri,
-                        noiseReductionPercent = currentProject.noiseReductionPercent,
-                        volumePercent = percent,
-                        onComplete = { file ->
-                            audioProcessing = false
+            currentProject?.let { proj ->
+                SmallSliderSheet(
+                    title = "Volume",
+                    subtitle = "اصل FFmpeg gain (volume filter) — 100% مطلب اصل volume",
+                    value = proj.volumePercent,
+                    valueRange = 0..500,
+                    valueLabel = { "$it%" },
+                    isProcessing = audioProcessing,
+                    onDismiss = { showVolumeSheet = false },
+                    onApply = { percent ->
+                        val voiceOverUri = proj.voiceOverUri
+                        if (voiceOverUri == null) {
                             showVolumeSheet = false
-                            scope.launch {
-                                val updated = currentProject.copy(
-                                    volumePercent = percent,
-                                    processedAudioPath = file?.absolutePath ?: currentProject.processedAudioPath
-                                )
-                                dao.updateProject(updated)
-                                project = updated
-                            }
+                            return@SmallSliderSheet
                         }
-                    )
-                }
-            )
+                        audioProcessing = true
+                        AudioProcessor.process(
+                            context = context,
+                            voiceOverUri = voiceOverUri,
+                            noiseReductionPercent = proj.noiseReductionPercent,
+                            volumePercent = percent,
+                            onComplete = { file ->
+                                audioProcessing = false
+                                showVolumeSheet = false
+                                scope.launch {
+                                    val updated = proj.copy(
+                                        volumePercent = percent,
+                                        processedAudioPath = file?.absolutePath ?: proj.processedAudioPath
+                                    )
+                                    dao.updateProject(updated)
+                                    project = updated
+                                }
+                            }
+                        )
+                    }
+                )
+            }
         }
     }
     }

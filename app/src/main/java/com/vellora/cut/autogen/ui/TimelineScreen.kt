@@ -1496,6 +1496,31 @@ private fun applyLiveMotionAndTransition(
         MotionEffect.STATIC -> {
             scope.scaleX = 1f; scope.scaleY = 1f
         }
+        MotionEffect.PUNCH_ZOOM -> {
+            // Fast burst to 1.15x in the first 15% of progress, then holds.
+            val scale = if (motionProgress <= 0.15f) 1f + (0.15f * (motionProgress / 0.15f)) else 1.15f
+            scope.scaleX = scale; scope.scaleY = scale
+        }
+        MotionEffect.SHAKE -> {
+            scope.scaleX = 1.08f; scope.scaleY = 1.08f
+            val t = motionProgress * 20f
+            scope.translationX = 3f * kotlin.math.sin(t / 2f)
+            scope.translationY = 3f * kotlin.math.cos(t / 3f)
+        }
+        MotionEffect.DIAGONAL -> {
+            val scale = 1f + 0.3f * motionProgress
+            scope.scaleX = scale; scope.scaleY = scale
+            scope.translationX = (0.5f - motionProgress) * w * 0.18f
+            scope.translationY = (0.5f - motionProgress) * h * 0.18f
+        }
+        MotionEffect.CINEMATIC_ZOOM -> {
+            val scale = 1f + 0.15f * motionProgress
+            scope.scaleX = scale; scope.scaleY = scale
+        }
+        MotionEffect.DRAMATIC_REVEAL -> {
+            val scale = 1.5f - 0.5f * motionProgress
+            scope.scaleX = scale; scope.scaleY = scale
+        }
         else -> { // ZOOM_IN (default)
             val scale = 1f + 0.3f * motionProgress
             scope.scaleX = scale
@@ -1516,6 +1541,18 @@ private fun applyLiveMotionAndTransition(
             }
             TransitionType.SLIDE_DOWN -> {
                 scope.translationY += if (isIncomingLayer) -h * (1f - transitionT) else h * transitionT
+            }
+            TransitionType.SMOOTH_LEFT, TransitionType.SQUEEZE -> {
+                // Same eased slide direction as SLIDE, close enough for a preview.
+                scope.translationX += if (isIncomingLayer) w * (1f - transitionT) else -w * transitionT
+            }
+            TransitionType.SMOOTH_RIGHT -> {
+                scope.translationX += if (isIncomingLayer) -w * (1f - transitionT) else w * transitionT
+            }
+            TransitionType.DIAGONAL -> {
+                val d = if (isIncomingLayer) (1f - transitionT) else -transitionT
+                scope.translationX += w * d
+                scope.translationY += h * d
             }
             else -> { // CROSSFADE, CIRCLE_OPEN, DISSOLVE, PIXELIZE
                 scope.alpha = if (isIncomingLayer) transitionT else 1f - transitionT

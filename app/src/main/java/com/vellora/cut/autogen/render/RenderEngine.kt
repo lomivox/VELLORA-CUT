@@ -259,6 +259,28 @@ object RenderEngine {
             MotionEffect.ZOOM_IN_PAN_LEFT -> Triple(zoomInZ, panLeftX, centerY)
             MotionEffect.ZOOM_IN_PAN_RIGHT -> Triple(zoomInZ, panRightX, centerY)
             MotionEffect.ZOOM_OUT_PAN -> Triple(zoomOutZ, panRightX, centerY)
+            // Fast burst to 1.15x in the first ~15% of frames, then holds flat —
+            // the "punch-in" look. threshold recomputed each frame from 'on'
+            // (current frame index) and the known total 'frames' for this clip.
+            MotionEffect.PUNCH_ZOOM -> Triple(
+                "if(lte(on,${(frames * 0.15).roundToInt()}),min(zoom+0.02,1.15),1.15)",
+                centerX, centerY
+            )
+            // Small continuous sinusoidal jitter around the centered crop —
+            // an authentic handheld-camera feel, not a hard cut.
+            MotionEffect.SHAKE -> Triple(
+                "1.08",
+                "$centerX+3*sin(on/2)",
+                "$centerY+3*cos(on/3)"
+            )
+            MotionEffect.DIAGONAL -> Triple(zoomInZ, panLeftX, panUpY)
+            // Same shape as ZOOM_IN but a gentler ceiling (1.15 instead of
+            // 1.3) — understated, doesn't scream "zoom effect".
+            MotionEffect.CINEMATIC_ZOOM -> Triple("min(zoom+0.0006,1.15)", centerX, centerY)
+            // Starts tight (1.5x) and pulls back to 1.0 — a dramatic reveal.
+            MotionEffect.DRAMATIC_REVEAL -> Triple(
+                "if(eq(on,0),1.5,max(zoom-0.002,1.0))", centerX, centerY
+            )
             else -> Triple(zoomInZ, centerX, centerY) // ZOOM_IN (default)
         }
         return "zoompan=z='$z':d=$frames:x='$x':y='$y':s=${width}x${height}:fps=$FPS"
@@ -279,6 +301,16 @@ object RenderEngine {
         TransitionType.CIRCLE_OPEN -> "circleopen"
         TransitionType.DISSOLVE -> "dissolve"
         TransitionType.PIXELIZE -> "pixelize"
+        TransitionType.FADE_BLACK -> "fadeblack"
+        TransitionType.FADE_WHITE -> "fadewhite"
+        TransitionType.RADIAL -> "radial"
+        TransitionType.BLUR -> "hblur"
+        TransitionType.SMOOTH_LEFT -> "smoothleft"
+        TransitionType.SMOOTH_RIGHT -> "smoothright"
+        TransitionType.CIRCLE_CLOSE -> "circleclose"
+        TransitionType.SQUEEZE -> "squeezeh"
+        TransitionType.DIAGONAL -> "diagtl"
+        TransitionType.DISTANCE -> "distance"
         else -> "fade" // CROSSFADE (default)
     }
 

@@ -73,13 +73,26 @@ object TransitionType {
     const val CIRCLE_OPEN = "circle_open"
     const val DISSOLVE = "dissolve"
     const val PIXELIZE = "pixelize"
+    // ---- batch 2: trending/professional (CapCut-style) additions ----
+    const val FADE_BLACK = "fade_black"
+    const val FADE_WHITE = "fade_white"
+    const val RADIAL = "radial"
+    const val BLUR = "blur"
+    const val SMOOTH_LEFT = "smooth_left"
+    const val SMOOTH_RIGHT = "smooth_right"
+    const val CIRCLE_CLOSE = "circle_close"
+    const val SQUEEZE = "squeeze"
+    const val DIAGONAL = "diagonal"
+    const val DISTANCE = "distance"
 
-    /** Every option, in the order they should be offered — all 10 map to
+    /** Every option, in the order they should be offered — all 20 map to
      * FFmpeg's built-in `xfade` transition names (see RenderEngine), so
      * every one of these is a REAL transition, not a fake/simulated one. */
     val ALL = listOf(
         CROSSFADE, SLIDE, SLIDE_RIGHT, SLIDE_UP, SLIDE_DOWN,
-        WIPE_LEFT, WIPE_RIGHT, CIRCLE_OPEN, DISSOLVE, PIXELIZE
+        WIPE_LEFT, WIPE_RIGHT, CIRCLE_OPEN, DISSOLVE, PIXELIZE,
+        FADE_BLACK, FADE_WHITE, RADIAL, BLUR, SMOOTH_LEFT,
+        SMOOTH_RIGHT, CIRCLE_CLOSE, SQUEEZE, DIAGONAL, DISTANCE
     )
 
     fun label(value: String): String = when (value) {
@@ -93,6 +106,16 @@ object TransitionType {
         CIRCLE_OPEN -> "Circle Open"
         DISSOLVE -> "Dissolve"
         PIXELIZE -> "Pixelize"
+        FADE_BLACK -> "Fade to Black"
+        FADE_WHITE -> "Fade to White"
+        RADIAL -> "Radial"
+        BLUR -> "Blur"
+        SMOOTH_LEFT -> "Smooth Left"
+        SMOOTH_RIGHT -> "Smooth Right"
+        CIRCLE_CLOSE -> "Circle Close"
+        SQUEEZE -> "Squeeze"
+        DIAGONAL -> "Diagonal"
+        DISTANCE -> "Distance"
         else -> value
     }
 }
@@ -113,13 +136,28 @@ object MotionEffect {
     const val ZOOM_OUT_PAN = "zoom_out_pan"
     /** No motion at all — the image just holds still. */
     const val STATIC = "static"
+    // ---- batch 2: trending/professional (CapCut-style) additions ----
+    /** Fast zoom burst in the first ~15% of the clip, then holds — the
+     * "punch-in" look common in fast-cut Reels/TikTok edits. */
+    const val PUNCH_ZOOM = "punch_zoom"
+    /** Tiny continuous jitter (a few px) — an authentic handheld-camera feel. */
+    const val SHAKE = "shake"
+    /** Zoom-in while panning both diagonally (up + left) at once. */
+    const val DIAGONAL = "diagonal"
+    /** A gentler zoom range (1.0→1.15 instead of 1.3) — understated,
+     * corporate/cinematic look rather than an obvious "zoom effect". */
+    const val CINEMATIC_ZOOM = "cinematic_zoom"
+    /** Starts tightly zoomed in (1.5x) and pulls back to reveal the full
+     * image — a dramatic "reveal" opener. */
+    const val DRAMATIC_REVEAL = "dramatic_reveal"
 
-    /** Every option, in the order they should be offered — all 10 are REAL
+    /** Every option, in the order they should be offered — all 15 are REAL
      * FFmpeg `zoompan` (or plain scale/crop for STATIC) formulas, see
      * RenderEngine, matched live in Preview by applyLiveMotionAndTransition. */
     val ALL = listOf(
         ZOOM_IN, ZOOM_OUT, PAN, PAN_LEFT, PAN_UP, PAN_DOWN,
-        ZOOM_IN_PAN_LEFT, ZOOM_IN_PAN_RIGHT, ZOOM_OUT_PAN, STATIC
+        ZOOM_IN_PAN_LEFT, ZOOM_IN_PAN_RIGHT, ZOOM_OUT_PAN, STATIC,
+        PUNCH_ZOOM, SHAKE, DIAGONAL, CINEMATIC_ZOOM, DRAMATIC_REVEAL
     )
 
     fun label(value: String): String = when (value) {
@@ -133,6 +171,11 @@ object MotionEffect {
         ZOOM_IN_PAN_RIGHT -> "Zoom+Pan Right"
         ZOOM_OUT_PAN -> "Zoom Out+Pan"
         STATIC -> "Static"
+        PUNCH_ZOOM -> "Punch Zoom"
+        SHAKE -> "Handheld Shake"
+        DIAGONAL -> "Ken Burns Diagonal"
+        CINEMATIC_ZOOM -> "Cinematic Zoom"
+        DRAMATIC_REVEAL -> "Dramatic Reveal"
         else -> value
     }
 }

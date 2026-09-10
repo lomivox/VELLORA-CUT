@@ -278,7 +278,7 @@ fun TimelineScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(0.487f)
+                    .weight(0.547f)
             ) {
                 PreviewPlayer(
                     project = currentProject,
@@ -318,7 +318,7 @@ fun TimelineScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(0.30f)
+                    .weight(0.24f)
                     .padding(horizontal = 20.dp, vertical = 10.dp)
             ) {
                 if (doneImages.isEmpty()) {
@@ -636,24 +636,6 @@ private fun PreviewPlayer(
     val context = LocalContext.current
     var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
     var isPrepared by remember { mutableStateOf(false) }
-    var isScrubbing by remember { mutableStateOf(false) }
-    var waveform by remember(project.voiceOverUri) { mutableStateOf(FloatArray(0)) }
-
-    // Real decoded-audio waveform (see WaveformExtractor's doc comment,
-    // ported from VELLORA-ENGINE) — purely decorative under the scrub
-    // slider, computed once per voice-over file.
-    LaunchedEffect(project.voiceOverUri, project.processedAudioPath) {
-        val processedPath = project.processedAudioPath
-        waveform = try {
-            if (processedPath != null && File(processedPath).exists()) {
-                WaveformExtractor(context).extract(Uri.fromFile(File(processedPath)))
-            } else {
-                project.voiceOverUri?.let { WaveformExtractor(context).extract(Uri.parse(it)) } ?: FloatArray(0)
-            }
-        } catch (e: Exception) {
-            FloatArray(0)
-        }
-    }
 
     DisposableEffect(project.voiceOverUri, project.processedAudioPath) {
         val uriString = project.voiceOverUri
@@ -724,19 +706,17 @@ private fun PreviewPlayer(
             val now = System.currentTimeMillis()
             val elapsed = now - lastTickMs
             lastTickMs = now
-            if (!isScrubbing) {
-                val mp = mediaPlayer
-                val next = if (mp != null && isPrepared) {
-                    mp.currentPosition.toLong()
-                } else {
-                    (positionMs + elapsed).coerceAtMost(totalMs)
-                }
-                if (next >= totalMs) {
-                    onIsPlayingChange(false)
-                    onPositionChange(0L)
-                } else {
-                    onPositionChange(next)
-                }
+            val mp = mediaPlayer
+            val next = if (mp != null && isPrepared) {
+                mp.currentPosition.toLong()
+            } else {
+                (positionMs + elapsed).coerceAtMost(totalMs)
+            }
+            if (next >= totalMs) {
+                onIsPlayingChange(false)
+                onPositionChange(0L)
+            } else {
+                onPositionChange(next)
             }
             delay(40)
         }
@@ -851,46 +831,11 @@ private fun PreviewPlayer(
             }
         }
 
-        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
-            if (waveform.isNotEmpty()) {
-                Canvas(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(36.dp)
-                ) {
-                    val barCount = waveform.size
-                    val barWidth = size.width / barCount
-                    val playedFraction = (positionMs.toFloat() / max(totalMs, 1L).toFloat()).coerceIn(0f, 1f)
-                    val playedBars = (barCount * playedFraction).toInt()
-                    waveform.forEachIndexed { index, amplitude ->
-                        val barHeight = (amplitude * size.height).coerceAtLeast(2f)
-                        drawRect(
-                            color = if (index <= playedBars) CyanPrimary else Color.White.copy(alpha = 0.25f),
-                            topLeft = androidx.compose.ui.geometry.Offset(
-                                index * barWidth,
-                                (size.height - barHeight) / 2f
-                            ),
-                            size = androidx.compose.ui.geometry.Size(barWidth * 0.7f, barHeight)
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-            }
-            Slider(
-                value = positionMs.toFloat().coerceIn(0f, max(totalMs, 1L).toFloat()),
-                valueRange = 0f..max(totalMs, 1L).toFloat(),
-                onValueChange = { value ->
-                    isScrubbing = true
-                    onPositionChange(value.toLong())
-                },
-                onValueChangeFinished = {
-                    mediaPlayer?.takeIf { isPrepared }?.seekTo(positionMs.toInt())
-                    isScrubbing = false
-                },
-                colors = SliderDefaults.colors(thumbColor = CyanPrimary, activeTrackColor = CyanPrimary),
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
+        // Waveform + scrub slider used to live here, directly under the
+        // video — both removed: the dual-track timeline below now owns
+        // scrubbing entirely (see VideoAudioTimelineView/onScrub), so
+        // Preview shows nothing but the video/image itself, exactly like
+        // a plain video player frame.
     }
 }
 

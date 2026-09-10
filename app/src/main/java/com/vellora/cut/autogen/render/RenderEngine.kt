@@ -7,6 +7,8 @@ import com.arthenica.ffmpegkit.FFmpegSession
 import com.arthenica.ffmpegkit.ReturnCode
 import com.arthenica.ffmpegkit.Statistics
 import com.vellora.cut.autogen.data.AutoGenProjectEntity
+import com.vellora.cut.autogen.data.CaptionSegment
+import com.vellora.cut.autogen.data.CaptionSegments
 import com.vellora.cut.autogen.data.MotionEffect
 import com.vellora.cut.autogen.data.TransitionType
 import com.vellora.cut.autogen.timeline.TimelineImage
@@ -90,7 +92,12 @@ object RenderEngine {
         val (width, height) = resolutionToSize(project.resolution)
 
         val arguments = try {
-            buildArguments(timeline, voiceOverFile, width, height, project.transitionType, project.motionEffect, outputFile)
+            buildArguments(
+                context, timeline, voiceOverFile, width, height,
+                project.transitionType, project.motionEffect,
+                if (project.captionsEnabled) CaptionSegments.fromJson(project.captionsJson) else emptyList(),
+                outputFile
+            )
         } catch (e: Exception) {
             onComplete(RenderResult.Failed("Render command banate hue error: ${e.message}", ""))
             return null
@@ -130,12 +137,14 @@ object RenderEngine {
     // ---- command building ----------------------------------------------------
 
     private fun buildArguments(
+        context: Context,
         timeline: List<TimelineImage>,
         voiceOverFile: File?,
         width: Int,
         height: Int,
         transitionType: String,
         motionEffect: String,
+        captions: List<CaptionSegment>,
         outputFile: File
     ): Array<String> {
         val n = timeline.size
@@ -163,7 +172,7 @@ object RenderEngine {
         }
 
         val filterComplex = buildFilterComplex(
-            n, inputLengths, durationsSec, width, height, transitionType, motionEffect
+            context, n, inputLengths, durationsSec, width, height, transitionType, motionEffect, captions
         )
 
         args += listOf("-filter_complex", filterComplex.script, "-map", "[${filterComplex.finalVideoLabel}]")
@@ -184,13 +193,15 @@ object RenderEngine {
     private data class FilterComplexResult(val script: String, val finalVideoLabel: String)
 
     private fun buildFilterComplex(
+        context: Context,
         n: Int,
         inputLengths: List<Double>,
         durationsSec: List<Double>,
         width: Int,
         height: Int,
         transitionType: String,
-        motionEffect: String
+        motionEffect: String,
+        captions: List<CaptionSegment>
     ): FilterComplexResult {
         val parts = mutableListOf<String>()
 
@@ -210,28 +221,56 @@ object RenderEngine {
                 "crop=${width * 2}:${height * 2},$zoompan,setsar=1[seg$i]"
         }
 
+        var finalLabel: String
         if (n == 1) {
-            return FilterComplexResult(parts.joinToString(";"), "seg0")
+            finalLabel = "seg0"
+        } else {
+            // Stage 2: chain xfade transitions. offset for the k-th transition (1-indexed,
+            // connecting seg(k-1) and seg(k)) is the cumulative sum of the first k images'
+            // *intended* on-screen durations — this is what keeps the final length matching
+            // the voice-over regardless of how many transitions are chained.
+            val xfadeName = xfadeNameFor(transitionType)
+            var previousLabel = "seg0"
+            var cumulative = 0.0
+            for (i in 1 until n) {
+                cumulative += durationsSec[i - 1]
+                val offset = max(0.0, cumulative - TRANSITION_DURATION_SEC)
+                val outLabel = if (i == n - 1) "vout" else "x$i"
+                parts += "[$previousLabel][seg$i]xfade=transition=$xfadeName:" +
+                    "duration=%.3f:offset=%.3f".format(TRANSITION_DURATION_SEC, offset) +
+                    "[$outLabel]"
+                previousLabel = outLabel
+            }
+            finalLabel = previousLabel
         }
 
-        // Stage 2: chain xfade transitions. offset for the k-th transition (1-indexed,
-        // connecting seg(k-1) and seg(k)) is the cumulative sum of the first k images'
-        // *intended* on-screen durations — this is what keeps the final length matching
-        // the voice-over regardless of how many transitions are chained.
-        val xfadeName = xfadeNameFor(transitionType)
-        var previousLabel = "seg0"
-        var cumulative = 0.0
-        for (i in 1 until n) {
-            cumulative += durationsSec[i - 1]
-            val offset = max(0.0, cumulative - TRANSITION_DURATION_SEC)
-            val outLabel = if (i == n - 1) "vout" else "x$i"
-            parts += "[$previousLabel][seg$i]xfade=transition=$xfadeName:" +
-                "duration=%.3f:offset=%.3f".format(TRANSITION_DURATION_SEC, offset) +
-                "[$outLabel]"
-            previousLabel = outLabel
+        // Stage 3 (optional): burn in real Whisper captions via drawtext, one
+        // filter per segment chained with `enable='between(t,start,end)'` so
+        // each line only shows during its actual spoken window. drawtext
+        // needs a real .ttf file path (FFmpeg can't use Android's font
+        // resources directly) — see findSystemFont's doc comment.
+        if (captions.isNotEmpty()) {
+            val fontPath = findSystemFont()
+            if (fontPath != null) {
+                val captionLabel = "captioned"
+                val drawtextFilters = captions.joinToString(",") { seg ->
+                    "drawtext=fontfile='${escapeDrawtextPath(fontPath)}':" +
+                        "text='${escapeDrawtextText(seg.text)}':" +
+                        "fontsize=${(height * 0.045).roundToInt()}:fontcolor=white:" +
+                        "borderw=3:bordercolor=black:" +
+                        "box=1:boxcolor=black@0.45:boxborderw=14:" +
+                        "x=(w-text_w)/2:y=h-th-${(height * 0.08).roundToInt()}:" +
+                        "enable='between(t,%.3f,%.3f)'".format(seg.startMs / 1000.0, seg.endMs / 1000.0)
+                }
+                parts += "[$finalLabel]$drawtextFilters[$captionLabel]"
+                finalLabel = captionLabel
+            }
+            // If no system font was found, captions are silently skipped
+            // rather than failing the whole render — the video still
+            // exports correctly, just without burned-in text.
         }
 
-        return FilterComplexResult(parts.joinToString(";"), previousLabel)
+        return FilterComplexResult(parts.joinToString(";"), finalLabel)
     }
 
     // ---- motion / transition mapping ---------------------------------------------
@@ -348,4 +387,35 @@ object RenderEngine {
         "720p" -> 1280 to 720 // legacy value, kept for old saved projects
         else -> 1920 to 1080 // "youtube" (default) / legacy "1080p" — landscape 16:9
     }
+
+    /**
+     * FFmpeg's drawtext filter needs a real .ttf file path — it can't use
+     * Android's font resources directly. Rather than bundling a font file
+     * ourselves, this checks the handful of paths nearly every Android
+     * device (since Android 4.x) ships a system font at. If none exist,
+     * captions are skipped for that render rather than failing it outright
+     * (see the call site in buildFilterComplex).
+     */
+    private fun findSystemFont(): String? {
+        val candidates = listOf(
+            "/system/fonts/Roboto-Regular.ttf",
+            "/system/fonts/NotoSans-Regular.ttf",
+            "/system/fonts/DroidSans.ttf",
+            "/system/fonts/Roboto-Medium.ttf"
+        )
+        return candidates.firstOrNull { File(it).exists() }
+    }
+
+    /** Escapes a caption line for FFmpeg's drawtext `text=` value. */
+    private fun escapeDrawtextText(text: String): String =
+        text
+            .replace("\\", "\\\\")
+            .replace("'", "\\'")
+            .replace(":", "\\:")
+            .replace("%", "\\%")
+            .replace("\n", " ")
+
+    /** Escapes a filesystem path for FFmpeg's drawtext `fontfile=` value. */
+    private fun escapeDrawtextPath(path: String): String =
+        path.replace("\\", "\\\\").replace(":", "\\:")
 }

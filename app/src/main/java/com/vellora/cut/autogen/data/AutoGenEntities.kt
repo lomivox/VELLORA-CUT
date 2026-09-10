@@ -47,8 +47,56 @@ data class AutoGenProjectEntity(
      * volume already baked in) — regenerated whenever either setting
      * changes. Null until first processed; both the live PreviewPlayer and
      * RenderEngine prefer this over the raw picked file when present. */
-    val processedAudioPath: String? = null
+    val processedAudioPath: String? = null,
+    /** Real Whisper-transcribed captions, stored as a JSON array of
+     * {text,startMs,endMs} — see [CaptionSegment]. Null until generated. */
+    val captionsJson: String? = null,
+    /** Whether captions are burned into the final render / shown live in
+     * Preview. Generating captions does NOT turn this on automatically —
+     * the person reviews the transcription first, then enables it. */
+    val captionsEnabled: Boolean = false
 )
+
+/** One real Whisper-transcribed line, with its exact spoken timing. */
+data class CaptionSegment(
+    val text: String,
+    val startMs: Long,
+    val endMs: Long
+)
+
+/** JSON (de)serialization for [AutoGenProjectEntity.captionsJson]. */
+object CaptionSegments {
+    fun toJson(segments: List<CaptionSegment>): String {
+        val array = org.json.JSONArray()
+        segments.forEach { seg ->
+            array.put(
+                org.json.JSONObject().apply {
+                    put("text", seg.text)
+                    put("startMs", seg.startMs)
+                    put("endMs", seg.endMs)
+                }
+            )
+        }
+        return array.toString()
+    }
+
+    fun fromJson(json: String?): List<CaptionSegment> {
+        if (json.isNullOrBlank()) return emptyList()
+        return try {
+            val array = org.json.JSONArray(json)
+            (0 until array.length()).map { i ->
+                val obj = array.getJSONObject(i)
+                CaptionSegment(
+                    text = obj.optString("text"),
+                    startMs = obj.optLong("startMs"),
+                    endMs = obj.optLong("endMs")
+                )
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+}
 
 /** Values for [AutoGenProjectEntity.timelineMode]. */
 object TimelineMode {

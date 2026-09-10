@@ -118,6 +118,9 @@ fun TimelineScreen(
     var showTransitionSheet by remember { mutableStateOf(false) }
     var showMotionSheet by remember { mutableStateOf(false) }
     var audioProcessing by remember { mutableStateOf(false) }
+    var showCaptionsSheet by remember { mutableStateOf(false) }
+    var captionsGenerating by remember { mutableStateOf(false) }
+    var captionsError by remember { mutableStateOf<String?>(null) }
     var pendingGallerySaveFile by remember { mutableStateOf<File?>(null) }
 
     val galleryPermissionLauncher = rememberLauncherForActivityResult(
@@ -387,7 +390,7 @@ fun TimelineScreen(
                     iconSize = navIconSize,
                     actions = listOf(
                         ToolbarAction(R.drawable.ic_trim, "Split") { },
-                        ToolbarAction(R.drawable.ic_text, "Text") { },
+                        ToolbarAction(R.drawable.ic_text, "Captions") { showCaptionsSheet = true },
                         ToolbarAction(R.drawable.ic_audio, "Audio") { audioLauncher.launch("audio/*") },
                         ToolbarAction(R.drawable.ic_volume, "Volume") { showVolumeSheet = true },
                         ToolbarAction(R.drawable.ic_noise, "Noise") { showNoiseSheet = true },
@@ -454,20 +457,12 @@ fun TimelineScreen(
 
         if (showNoiseSheet) {
             currentProject?.let { proj ->
-                SmallSliderSheet(
-                    title = "Noise Reduction",
-                    subtitle = "اصل FFmpeg denoiser (afftdn) — 0% مطلب کچھ نہیں لگا",
-                    value = proj.noiseReductionPercent,
-                    valueRange = 0..100,
-                    valueLabel = { "$it%" },
-                    isProcessing = audioProcessing,
-                    onDismiss = { showNoiseSheet = false },
-                    onApply = { percent ->
-                        val voiceOverUri = proj.voiceOverUri
-                        if (voiceOverUri == null) {
-                            showNoiseSheet = false
-                            return@SmallSliderSheet
-                        }
+                var lastNoisePercent by remember {
+                    mutableStateOf(if (proj.noiseReductionPercent > 0) proj.noiseReductionPercent else 50)
+                }
+                val applyNoise: (Int) -> Unit = { percent ->
+                    val voiceOverUri = proj.voiceOverUri
+                    if (voiceOverUri != null) {
                         audioProcessing = true
                         AudioProcessor.process(
                             context = context,
@@ -476,7 +471,6 @@ fun TimelineScreen(
                             volumePercent = proj.volumePercent,
                             onComplete = { file ->
                                 audioProcessing = false
-                                showNoiseSheet = false
                                 scope.launch {
                                     val updated = proj.copy(
                                         noiseReductionPercent = percent,
@@ -488,6 +482,29 @@ fun TimelineScreen(
                             }
                         )
                     }
+                }
+                SmallSliderSheet(
+                    title = "Noise Reduction",
+                    subtitle = "اصل FFmpeg denoiser (afftdn) — toggle سے آن/آف، slider چھوڑتے ہی خودکار apply",
+                    value = proj.noiseReductionPercent,
+                    valueRange = 0..100,
+                    valueLabel = { "$it%" },
+                    isProcessing = audioProcessing,
+                    showToggle = true,
+                    toggleEnabled = proj.noiseReductionPercent > 0,
+                    onToggleChange = { checked ->
+                        if (checked) {
+                            applyNoise(lastNoisePercent)
+                        } else {
+                            if (proj.noiseReductionPercent > 0) lastNoisePercent = proj.noiseReductionPercent
+                            applyNoise(0)
+                        }
+                    },
+                    onDismiss = { showNoiseSheet = false },
+                    onValueSettled = { percent ->
+                        if (percent > 0) lastNoisePercent = percent
+                        applyNoise(percent)
+                    }
                 )
             }
         }
@@ -496,18 +513,15 @@ fun TimelineScreen(
             currentProject?.let { proj ->
                 SmallSliderSheet(
                     title = "Volume",
-                    subtitle = "اصل FFmpeg gain (volume filter) — 100% مطلب اصل volume",
+                    subtitle = "اصل FFmpeg gain (volume filter) — slider چھوڑتے ہی خودکار apply",
                     value = proj.volumePercent,
                     valueRange = 0..500,
                     valueLabel = { "$it%" },
                     isProcessing = audioProcessing,
                     onDismiss = { showVolumeSheet = false },
-                    onApply = { percent ->
+                    onValueSettled = { percent ->
                         val voiceOverUri = proj.voiceOverUri
-                        if (voiceOverUri == null) {
-                            showVolumeSheet = false
-                            return@SmallSliderSheet
-                        }
+                        if (voiceOverUri == null) return@SmallSliderSheet
                         audioProcessing = true
                         AudioProcessor.process(
                             context = context,
@@ -516,7 +530,6 @@ fun TimelineScreen(
                             volumePercent = percent,
                             onComplete = { file ->
                                 audioProcessing = false
-                                showVolumeSheet = false
                                 scope.launch {
                                     val updated = proj.copy(
                                         volumePercent = percent,
@@ -611,6 +624,53 @@ fun TimelineScreen(
                 )
             }
         }
+
+        if (showCaptionsSheet) {
+            currentProject?.let { proj ->
+                CaptionsSheet(
+                    project = proj,
+                    isGenerating = captionsGenerating,
+                    errorMessage = captionsError,
+                    onDismiss = { showCaptionsSheet = false; captionsError = null },
+                    onGenerate = {
+                        val voiceOverUri = proj.voiceOverUri
+                        if (voiceOverUri == null) {
+                            captionsError = "Pehle voice-over upload karein"
+                            return@CaptionsSheet
+                        }
+                        captionsGenerating = true
+                        captionsError = null
+                        scope.launch {
+                            val accounts = com.vellora.cut.autogen.data.SecureCredentialStore(context).accounts
+                            val result = com.vellora.cut.autogen.captions.CaptionGenerator.generate(
+                                context = context,
+                                voiceOverUri = voiceOverUri,
+                                processedAudioPath = proj.processedAudioPath,
+                                accounts = accounts
+                            )
+                            captionsGenerating = false
+                            result.onSuccess { segments ->
+                                val updated = proj.copy(
+                                    captionsJson = com.vellora.cut.autogen.data.CaptionSegments.toJson(segments),
+                                    captionsEnabled = true
+                                )
+                                dao.updateProject(updated)
+                                project = updated
+                            }.onFailure { e ->
+                                captionsError = e.message ?: "Transcription fail hui"
+                            }
+                        }
+                    },
+                    onToggleEnabled = { enabled ->
+                        scope.launch {
+                            val updated = proj.copy(captionsEnabled = enabled)
+                            dao.updateProject(updated)
+                            project = updated
+                        }
+                    }
+                )
+            }
+        }
     }
     }
 }
@@ -636,6 +696,13 @@ private fun PreviewPlayer(
     val context = LocalContext.current
     var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
     var isPrepared by remember { mutableStateOf(false) }
+
+    val captionSegments = remember(project.captionsJson) {
+        com.vellora.cut.autogen.data.CaptionSegments.fromJson(project.captionsJson)
+    }
+    val currentCaptionText = if (project.captionsEnabled) {
+        captionSegments.firstOrNull { positionMs in it.startMs..it.endMs }?.text
+    } else null
 
     DisposableEffect(project.voiceOverUri, project.processedAudioPath) {
         val uriString = project.voiceOverUri
@@ -826,6 +893,21 @@ private fun PreviewPlayer(
                             )
                         },
                     contentScale = ContentScale.Fit
+                )
+            }
+
+            if (currentCaptionText != null) {
+                Text(
+                    text = currentCaptionText,
+                    color = Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 24.dp, start = 16.dp, end = 16.dp)
+                        .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
                 )
             }
             }
@@ -1231,10 +1313,116 @@ private fun formatMs(ms: Long): String {
 }
 
 /**
- * One small bottom card with a title + slider + Apply button — used for
- * both Noise Reduction and Volume so far. Deliberately compact (a card
- * anchored to the bottom, not a full page) per explicit feedback that an
- * earlier full-screen sheet was too much for a single slider control.
+ * Small bottom card for real Whisper captions: Generate (or Regenerate)
+ * button + an Enabled/Disabled toggle once segments exist. Same compact
+ * bottom-card look as [SmallSliderSheet]/[ChoiceBottomSheet].
+ */
+@Composable
+private fun CaptionsSheet(
+    project: AutoGenProjectEntity,
+    isGenerating: Boolean,
+    errorMessage: String?,
+    onDismiss: () -> Unit,
+    onGenerate: () -> Unit,
+    onToggleEnabled: (Boolean) -> Unit
+) {
+    val segments = remember(project.captionsJson) {
+        com.vellora.cut.autogen.data.CaptionSegments.fromJson(project.captionsJson)
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.5f))
+            .clickable(onClick = onDismiss)
+    ) {
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp))
+                .background(SurfaceDark)
+                .clickable(enabled = false) { }
+                .navigationBarsPadding()
+                .padding(20.dp)
+        ) {
+            Text(text = "Captions", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = "اصل Whisper AI transcription — جو بولا گیا وہی لکھا جائے گا",
+                color = TextSecondary,
+                fontSize = 11.sp
+            )
+            Spacer(modifier = Modifier.height(14.dp))
+
+            when {
+                isGenerating -> {
+                    Text(text = "Sun kar likh raha hai (real transcription)…", color = TextSecondary, fontSize = 12.sp)
+                }
+                segments.isEmpty() -> {
+                    if (errorMessage != null) {
+                        Text(text = "⚠ $errorMessage", color = Color(0xFFFF6B6B), fontSize = 12.sp)
+                        Spacer(modifier = Modifier.height(10.dp))
+                    }
+                    Button(
+                        onClick = onGenerate,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
+                    ) {
+                        Text(text = "Generate Captions", color = BackgroundDark, fontWeight = FontWeight.Bold)
+                    }
+                }
+                else -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(text = "${segments.size} lines mil gayi", color = TextPrimary, fontSize = 13.sp)
+                        Switch(
+                            checked = project.captionsEnabled,
+                            onCheckedChange = onToggleEnabled,
+                            colors = SwitchDefaults.colors(checkedTrackColor = CyanPrimary)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 160.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        segments.take(20).forEach { seg ->
+                            Text(
+                                text = "${formatMs(seg.startMs)} — ${seg.text}",
+                                color = TextSecondary,
+                                fontSize = 11.sp,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    OutlinedButton(
+                        onClick = onGenerate,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(text = "Regenerate", color = TextPrimary)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Same bottom-card as before, but no Apply button anymore — moving the
+ * slider and letting go (onValueChangeFinished) auto-applies, same as a
+ * real editor. The real FFmpeg pass only runs once per "settle" (release),
+ * never on every pixel of the drag, so it stays cheap. When [showToggle]
+ * is true (Noise only), a Switch above the slider turns the effect fully
+ * on/off — off always means 0%, independent of whatever the slider is set
+ * to, so a person can flip noise reduction off without losing their
+ * chosen strength for next time.
  */
 @Composable
 private fun SmallSliderSheet(
@@ -1244,10 +1432,14 @@ private fun SmallSliderSheet(
     valueRange: IntRange,
     valueLabel: (Int) -> String,
     isProcessing: Boolean,
+    showToggle: Boolean = false,
+    toggleEnabled: Boolean = true,
+    onToggleChange: (Boolean) -> Unit = {},
     onDismiss: () -> Unit,
-    onApply: (Int) -> Unit
+    onValueSettled: (Int) -> Unit
 ) {
     var sliderValue by remember { mutableStateOf(value.toFloat()) }
+    LaunchedEffect(value) { sliderValue = value.toFloat() }
 
     Box(
         modifier = Modifier
@@ -1262,11 +1454,26 @@ private fun SmallSliderSheet(
                 .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp))
                 .background(SurfaceDark)
                 .clickable(enabled = false) { } // absorbs taps so they don't fall through to onDismiss
+                .navigationBarsPadding()
                 .padding(20.dp)
         ) {
-            Text(text = title, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(text = subtitle, color = TextSecondary, fontSize = 11.sp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(text = title, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    Text(text = subtitle, color = TextSecondary, fontSize = 11.sp)
+                }
+                if (showToggle) {
+                    Switch(
+                        checked = toggleEnabled,
+                        onCheckedChange = onToggleChange,
+                        colors = SwitchDefaults.colors(checkedTrackColor = CyanPrimary)
+                    )
+                }
+            }
             Spacer(modifier = Modifier.height(14.dp))
 
             Row(
@@ -1279,6 +1486,8 @@ private fun SmallSliderSheet(
                 value = sliderValue,
                 valueRange = valueRange.first.toFloat()..valueRange.last.toFloat(),
                 onValueChange = { sliderValue = it },
+                onValueChangeFinished = { onValueSettled(sliderValue.toInt()) },
+                enabled = !showToggle || toggleEnabled,
                 colors = SliderDefaults.colors(thumbColor = CyanPrimary, activeTrackColor = CyanPrimary),
                 modifier = Modifier.fillMaxWidth()
             )
@@ -1286,25 +1495,16 @@ private fun SmallSliderSheet(
             Spacer(modifier = Modifier.height(10.dp))
 
             if (isProcessing) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(text = "Processing (real FFmpeg)…", color = TextSecondary, fontSize = 12.sp)
-                }
+                Text(text = "Processing (real FFmpeg)…", color = TextSecondary, fontSize = 12.sp)
             } else {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Button(
-                        onClick = { onApply(sliderValue.toInt()) },
-                        colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
-                    ) {
-                        Text(text = "Apply", color = BackgroundDark, fontWeight = FontWeight.Bold)
-                    }
-                    OutlinedButton(onClick = onDismiss) {
-                        Text(text = "Cancel", color = TextPrimary)
-                    }
+                OutlinedButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+                    Text(text = "Done", color = TextPrimary)
                 }
             }
         }
     }
 }
+
 
 /** One tappable choice inside a [ChoiceBottomSheet] — e.g. "Crossfade". */
 private data class ChoiceOption(
@@ -1342,6 +1542,7 @@ private fun ChoiceBottomSheet(
                 .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp))
                 .background(SurfaceDark)
                 .clickable(enabled = false) { } // absorbs taps so they don't fall through to onDismiss
+                .navigationBarsPadding()
                 .padding(20.dp)
         ) {
             Text(text = title, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)

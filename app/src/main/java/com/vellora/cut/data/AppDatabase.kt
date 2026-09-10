@@ -34,11 +34,19 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
     }
 }
 
+/** v6 -> v7: added real Whisper-transcribed captions (JSON) + enabled flag. */
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE autogen_projects ADD COLUMN captionsJson TEXT")
+        db.execSQL("ALTER TABLE autogen_projects ADD COLUMN captionsEnabled INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
 @Database(
     entities = [
         AutoGenProjectEntity::class, PromptEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -54,7 +62,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "vellora.db"
                 )
-                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6)
+                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                     // Safety net ONLY for a version jump with no migration
                     // listed above (e.g. someone on a version older than 4,
                     // or a future bump where a Migration was forgotten) —

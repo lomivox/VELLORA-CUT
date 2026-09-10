@@ -196,19 +196,16 @@ object RenderEngine {
 
         // Stage 1: per-image upscale-and-cover to a canvas 2x the target size, then
         // zoompan for the motion effect, cropped down to the final WxH. Upscaling
-        // first gives zoompan room to move/zoom without visible edges.
+        // first gives zoompan room to move/zoom without visible edges. STATIC skips
+        // zoompan entirely (no motion requested — cheaper and avoids any drift).
         for (i in 0 until n) {
             val frames = max(2, (inputLengths[i] * FPS).roundToInt())
-            val zoompan = when (motionEffect) {
-                MotionEffect.PAN ->
-                    "zoompan=z=1.15:d=$frames:" +
-                        "x='(iw-iw/zoom)*on/${frames - 1}':y='ih/2-(ih/zoom/2)':" +
-                        "s=${width}x${height}:fps=$FPS"
-                else -> // ZOOM_IN (default)
-                    "zoompan=z='min(zoom+0.0012,1.3)':d=$frames:" +
-                        "x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':" +
-                        "s=${width}x${height}:fps=$FPS"
+            if (motionEffect == MotionEffect.STATIC) {
+                parts += "[$i:v]scale=${width}:${height}:force_original_aspect_ratio=increase," +
+                    "crop=${width}:${height},setsar=1[seg$i]"
+                continue
             }
+            val zoompan = zoompanFor(motionEffect, frames, width, height)
             parts += "[$i:v]scale=${width * 2}:${height * 2}:force_original_aspect_ratio=increase," +
                 "crop=${width * 2}:${height * 2},$zoompan,setsar=1[seg$i]"
         }
@@ -221,7 +218,7 @@ object RenderEngine {
         // connecting seg(k-1) and seg(k)) is the cumulative sum of the first k images'
         // *intended* on-screen durations — this is what keeps the final length matching
         // the voice-over regardless of how many transitions are chained.
-        val xfadeName = if (transitionType == TransitionType.SLIDE) "slideleft" else "fade"
+        val xfadeName = xfadeNameFor(transitionType)
         var previousLabel = "seg0"
         var cumulative = 0.0
         for (i in 1 until n) {
@@ -235,6 +232,54 @@ object RenderEngine {
         }
 
         return FilterComplexResult(parts.joinToString(";"), previousLabel)
+    }
+
+    // ---- motion / transition mapping ---------------------------------------------
+
+    /** Builds the `zoompan=...` filter string for one of [MotionEffect]'s 10 values
+     * (STATIC is handled separately by the caller, before this is ever called).
+     * All are real zoompan z/x/y expressions — nothing here is simulated. */
+    private fun zoompanFor(motionEffect: String, frames: Int, width: Int, height: Int): String {
+        val centerX = "iw/2-(iw/zoom/2)"
+        val centerY = "ih/2-(ih/zoom/2)"
+        val panRightX = "(iw-iw/zoom)*on/${frames - 1}"
+        val panLeftX = "(iw-iw/zoom)*(1-on/${frames - 1})"
+        val panDownY = "(ih-ih/zoom)*on/${frames - 1}"
+        val panUpY = "(ih-ih/zoom)*(1-on/${frames - 1})"
+        val zoomInZ = "min(zoom+0.0012,1.3)"
+        val zoomOutZ = "if(eq(on,0),1.3,max(zoom-0.0012,1.0))"
+        val fixedZoomZ = "1.15"
+
+        val (z, x, y) = when (motionEffect) {
+            MotionEffect.ZOOM_OUT -> Triple(zoomOutZ, centerX, centerY)
+            MotionEffect.PAN -> Triple(fixedZoomZ, panRightX, centerY)
+            MotionEffect.PAN_LEFT -> Triple(fixedZoomZ, panLeftX, centerY)
+            MotionEffect.PAN_UP -> Triple(fixedZoomZ, centerX, panUpY)
+            MotionEffect.PAN_DOWN -> Triple(fixedZoomZ, centerX, panDownY)
+            MotionEffect.ZOOM_IN_PAN_LEFT -> Triple(zoomInZ, panLeftX, centerY)
+            MotionEffect.ZOOM_IN_PAN_RIGHT -> Triple(zoomInZ, panRightX, centerY)
+            MotionEffect.ZOOM_OUT_PAN -> Triple(zoomOutZ, panRightX, centerY)
+            else -> Triple(zoomInZ, centerX, centerY) // ZOOM_IN (default)
+        }
+        return "zoompan=z='$z':d=$frames:x='$x':y='$y':s=${width}x${height}:fps=$FPS"
+    }
+
+    /** Maps a [TransitionType] value to the exact `xfade` transition name FFmpeg
+     * expects. All 10 are from xfade's original built-in transition set (available
+     * since the filter was first added), so this works on every FFmpegKit build —
+     * unlike a couple of newer xfade transitions (e.g. "zoomin") that only exist on
+     * very recent FFmpeg builds and were deliberately left out to avoid that risk. */
+    private fun xfadeNameFor(transitionType: String): String = when (transitionType) {
+        TransitionType.SLIDE -> "slideleft"
+        TransitionType.SLIDE_RIGHT -> "slideright"
+        TransitionType.SLIDE_UP -> "slideup"
+        TransitionType.SLIDE_DOWN -> "slidedown"
+        TransitionType.WIPE_LEFT -> "wipeleft"
+        TransitionType.WIPE_RIGHT -> "wiperight"
+        TransitionType.CIRCLE_OPEN -> "circleopen"
+        TransitionType.DISSOLVE -> "dissolve"
+        TransitionType.PIXELIZE -> "pixelize"
+        else -> "fade" // CROSSFADE (default)
     }
 
     // ---- helpers ---------------------------------------------------------------

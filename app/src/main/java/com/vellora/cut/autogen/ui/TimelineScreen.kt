@@ -15,6 +15,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -569,31 +570,20 @@ fun TimelineScreen(
             currentProject?.let { proj ->
                 ChoiceBottomSheet(
                     title = "Transition",
-                    subtitle = "Do images ke darmiyan cut ka style",
-                    options = listOf(
+                    subtitle = "Do images ke darmiyan cut ka style — 10 real FFmpeg xfade transitions",
+                    options = TransitionType.ALL.map { value ->
                         ChoiceOption(
-                            label = "Crossfade",
-                            selected = proj.transitionType == TransitionType.CROSSFADE,
+                            label = TransitionType.label(value),
+                            selected = proj.transitionType == value,
                             onSelect = {
                                 scope.launch {
-                                    val updated = proj.copy(transitionType = TransitionType.CROSSFADE)
-                                    dao.updateProject(updated)
-                                    project = updated
-                                }
-                            }
-                        ),
-                        ChoiceOption(
-                            label = "Slide",
-                            selected = proj.transitionType == TransitionType.SLIDE,
-                            onSelect = {
-                                scope.launch {
-                                    val updated = proj.copy(transitionType = TransitionType.SLIDE)
+                                    val updated = proj.copy(transitionType = value)
                                     dao.updateProject(updated)
                                     project = updated
                                 }
                             }
                         )
-                    ),
+                    },
                     onDismiss = { showTransitionSheet = false }
                 )
             }
@@ -603,31 +593,20 @@ fun TimelineScreen(
             currentProject?.let { proj ->
                 ChoiceBottomSheet(
                     title = "Motion Effect",
-                    subtitle = "Har image par live camera movement",
-                    options = listOf(
+                    subtitle = "Har image par live camera movement — 10 real zoompan formulas",
+                    options = MotionEffect.ALL.map { value ->
                         ChoiceOption(
-                            label = "Zoom-In",
-                            selected = proj.motionEffect == MotionEffect.ZOOM_IN,
+                            label = MotionEffect.label(value),
+                            selected = proj.motionEffect == value,
                             onSelect = {
                                 scope.launch {
-                                    val updated = proj.copy(motionEffect = MotionEffect.ZOOM_IN)
-                                    dao.updateProject(updated)
-                                    project = updated
-                                }
-                            }
-                        ),
-                        ChoiceOption(
-                            label = "Pan",
-                            selected = proj.motionEffect == MotionEffect.PAN,
-                            onSelect = {
-                                scope.launch {
-                                    val updated = proj.copy(motionEffect = MotionEffect.PAN)
+                                    val updated = proj.copy(motionEffect = value)
                                     dao.updateProject(updated)
                                     project = updated
                                 }
                             }
                         )
-                    ),
+                    },
                     onDismiss = { showMotionSheet = false }
                 )
             }
@@ -1425,7 +1404,10 @@ private fun ChoiceBottomSheet(
             Text(text = subtitle, color = TextSecondary, fontSize = 11.sp)
             Spacer(modifier = Modifier.height(14.dp))
 
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.horizontalScroll(rememberScrollState())
+            ) {
                 options.forEach { option ->
                     ModeChip(
                         label = option.label,
@@ -1453,6 +1435,15 @@ private fun ChoiceBottomSheet(
  * [isIncomingLayer] is the "next" image fading/sliding IN during a
  * transition; the "current" image is always the outgoing layer.
  */
+/**
+ * Cheap Compose-side approximation of the same 10 motion effects and 10
+ * transitions RenderEngine actually renders with FFmpeg zoompan/xfade —
+ * good enough to preview which one is picked, not a frame-exact match
+ * (a couple of the busier transitions — wipe/circle/dissolve/pixelize —
+ * are approximated with a slide or fade rather than reproduced exactly,
+ * since Preview only needs to convey "this is roughly what it'll look
+ * like", while the actual export always uses the real FFmpeg filter).
+ */
 private fun applyLiveMotionAndTransition(
     scope: GraphicsLayerScope,
     motionEffect: String,
@@ -1462,13 +1453,50 @@ private fun applyLiveMotionAndTransition(
     isIncomingLayer: Boolean,
     inTransition: Boolean
 ) {
+    val w = scope.size.width
+    val h = scope.size.height
+
     when (motionEffect) {
-        MotionEffect.PAN -> {
-            scope.scaleX = 1.15f
-            scope.scaleY = 1.15f
-            scope.translationX = (motionProgress - 0.5f) * scope.size.width * 0.18f
+        MotionEffect.ZOOM_OUT -> {
+            val scale = 1.3f - 0.3f * motionProgress
+            scope.scaleX = scale
+            scope.scaleY = scale
         }
-        else -> { // ZOOM_IN
+        MotionEffect.PAN -> { // Pan Right
+            scope.scaleX = 1.15f; scope.scaleY = 1.15f
+            scope.translationX = (motionProgress - 0.5f) * w * 0.18f
+        }
+        MotionEffect.PAN_LEFT -> {
+            scope.scaleX = 1.15f; scope.scaleY = 1.15f
+            scope.translationX = (0.5f - motionProgress) * w * 0.18f
+        }
+        MotionEffect.PAN_UP -> {
+            scope.scaleX = 1.15f; scope.scaleY = 1.15f
+            scope.translationY = (0.5f - motionProgress) * h * 0.18f
+        }
+        MotionEffect.PAN_DOWN -> {
+            scope.scaleX = 1.15f; scope.scaleY = 1.15f
+            scope.translationY = (motionProgress - 0.5f) * h * 0.18f
+        }
+        MotionEffect.ZOOM_IN_PAN_LEFT -> {
+            val scale = 1f + 0.3f * motionProgress
+            scope.scaleX = scale; scope.scaleY = scale
+            scope.translationX = (0.5f - motionProgress) * w * 0.18f
+        }
+        MotionEffect.ZOOM_IN_PAN_RIGHT -> {
+            val scale = 1f + 0.3f * motionProgress
+            scope.scaleX = scale; scope.scaleY = scale
+            scope.translationX = (motionProgress - 0.5f) * w * 0.18f
+        }
+        MotionEffect.ZOOM_OUT_PAN -> {
+            val scale = 1.3f - 0.3f * motionProgress
+            scope.scaleX = scale; scope.scaleY = scale
+            scope.translationX = (motionProgress - 0.5f) * w * 0.18f
+        }
+        MotionEffect.STATIC -> {
+            scope.scaleX = 1f; scope.scaleY = 1f
+        }
+        else -> { // ZOOM_IN (default)
             val scale = 1f + 0.3f * motionProgress
             scope.scaleX = scale
             scope.scaleY = scale
@@ -1477,14 +1505,19 @@ private fun applyLiveMotionAndTransition(
 
     if (inTransition) {
         when (transitionType) {
-            TransitionType.SLIDE -> {
-                scope.translationX += if (isIncomingLayer) {
-                    scope.size.width * (1f - transitionT)
-                } else {
-                    -scope.size.width * transitionT
-                }
+            TransitionType.SLIDE, TransitionType.WIPE_LEFT -> {
+                scope.translationX += if (isIncomingLayer) w * (1f - transitionT) else -w * transitionT
             }
-            else -> { // CROSSFADE
+            TransitionType.SLIDE_RIGHT, TransitionType.WIPE_RIGHT -> {
+                scope.translationX += if (isIncomingLayer) -w * (1f - transitionT) else w * transitionT
+            }
+            TransitionType.SLIDE_UP -> {
+                scope.translationY += if (isIncomingLayer) h * (1f - transitionT) else -h * transitionT
+            }
+            TransitionType.SLIDE_DOWN -> {
+                scope.translationY += if (isIncomingLayer) -h * (1f - transitionT) else h * transitionT
+            }
+            else -> { // CROSSFADE, CIRCLE_OPEN, DISSOLVE, PIXELIZE
                 scope.alpha = if (isIncomingLayer) transitionT else 1f - transitionT
             }
         }

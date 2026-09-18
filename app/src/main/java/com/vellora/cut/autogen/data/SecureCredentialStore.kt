@@ -76,6 +76,14 @@ class SecureCredentialStore(context: Context) {
         get() = prefs.getString(KEY_MODEL, DEFAULT_MODEL) ?: DEFAULT_MODEL
         set(value) = prefs.edit().putString(KEY_MODEL, value).apply()
 
+    /** YouTube Data API v3 key (optional) — used only for real competitor
+     * keyword research (search.list + videos.list on YOUR topic's already
+     * top-ranking videos). Without it, keyword research falls back to
+     * YouTube's free autocomplete endpoint (still real, just less rich). */
+    var youtubeApiKey: String
+        get() = prefs.getString(KEY_YOUTUBE_API_KEY, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_YOUTUBE_API_KEY, value).apply()
+
     fun hasCredentials(): Boolean = accounts.isNotEmpty()
 
     companion object {
@@ -83,6 +91,7 @@ class SecureCredentialStore(context: Context) {
         private const val KEY_LEGACY_ACCOUNT_ID = "cf_account_id"
         private const val KEY_LEGACY_API_TOKEN = "cf_api_token"
         private const val KEY_MODEL = "cf_image_model"
+        private const val KEY_YOUTUBE_API_KEY = "youtube_data_api_key"
         const val DEFAULT_MODEL = "@cf/black-forest-labs/flux-1-schnell"
     }
 }

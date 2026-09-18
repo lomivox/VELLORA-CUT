@@ -56,6 +56,7 @@ fun SettingsScreen(onBack: () -> Unit) {
         }
     }
     var savedMessage by remember { mutableStateOf<String?>(null) }
+    var youtubeApiKey by remember { mutableStateOf(store.youtubeApiKey) }
 
     Scaffold(containerColor = BackgroundDark) { padding ->
         Column(
@@ -106,6 +107,25 @@ fun SettingsScreen(onBack: () -> Unit) {
                     Text(text = "+ Add Account (${rows.size} so far)", color = CyanPrimary)
                 }
 
+                Spacer(modifier = Modifier.height(24.dp))
+                Text(text = "YouTube Data API Key (اختیاری)", color = CyanPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Shorts Metadata tool کے لیے — اس topic پر پہلے سے چل رہی videos کے real keywords " +
+                        "دیکھ کر behtar research کرنے کے لیے۔ خالی چھوڑ دیں تو YouTube کے مفت autocomplete سے کام چلے گا۔",
+                    color = TextSecondary,
+                    fontSize = 12.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = youtubeApiKey,
+                    onValueChange = { youtubeApiKey = it; savedMessage = null },
+                    label = { Text("YouTube API Key") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = fieldColors()
+                )
+
                 Spacer(modifier = Modifier.height(20.dp))
             }
 
@@ -115,6 +135,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                         .filter { it.accountId.isNotBlank() && it.apiToken.isNotBlank() }
                         .map { CloudflareAccount(it.accountId, it.apiToken) }
                     store.accounts = validAccounts
+                    store.youtubeApiKey = youtubeApiKey
                     savedMessage = "${validAccounts.size} account(s) محفوظ ہو گئے"
                 },
                 modifier = Modifier.fillMaxWidth(),

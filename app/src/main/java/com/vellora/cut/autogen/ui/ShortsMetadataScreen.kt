@@ -45,6 +45,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
     val projects by dao.observeAll().collectAsState(initial = emptyList())
 
     var activeProject by remember { mutableStateOf<ShortMetadataEntity?>(null) }
+    var outputLanguage by remember { mutableStateOf("Urdu") } // "Urdu" or "English"
     var isWorking by remember { mutableStateOf(false) }
     var statusText by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -82,6 +83,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
                 context = context,
                 videoUri = uri.toString(),
                 accounts = accounts,
+                language = outputLanguage,
                 onStatusChange = { statusText = it }
             )
             isWorking = false
@@ -132,6 +134,37 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
             fontSize = 12.sp,
             modifier = Modifier.padding(horizontal = 16.dp)
         )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Text(
+            text = "Language",
+            color = TextSecondary,
+            fontSize = 11.sp,
+            modifier = Modifier.padding(horizontal = 16.dp)
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            listOf("Urdu", "English").forEach { lang ->
+                val selected = outputLanguage == lang
+                Surface(
+                    onClick = { outputLanguage = lang },
+                    shape = RoundedCornerShape(20.dp),
+                    color = if (selected) CyanPrimary else SurfaceVariant
+                ) {
+                    Text(
+                        text = lang,
+                        color = if (selected) BackgroundDark else TextPrimary,
+                        fontSize = 12.sp,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
+            }
+        }
 
         Spacer(modifier = Modifier.height(12.dp))
 
@@ -213,8 +246,8 @@ private fun ResultCard(project: ShortMetadataEntity) {
             .clip(RoundedCornerShape(12.dp))
             .background(SurfaceDark)
             .padding(14.dp)
-            .verticalScroll(rememberScrollState())
             .heightIn(max = 320.dp)
+            .verticalScroll(rememberScrollState())
     ) {
         CopyableField(context, "Title", project.generatedTitle.orEmpty())
         Spacer(modifier = Modifier.height(10.dp))

@@ -55,7 +55,8 @@ fun SettingsScreen(onBack: () -> Unit) {
             }
         }
     }
-    var savedMessage by remember { mutableStateOf<String?>(null) }
+    var accountsSavedMessage by remember { mutableStateOf<String?>(null) }
+    var youtubeSavedMessage by remember { mutableStateOf<String?>(null) }
     var youtubeApiKey by remember { mutableStateOf(store.youtubeApiKey) }
 
     Scaffold(containerColor = BackgroundDark) { padding ->
@@ -92,9 +93,9 @@ fun SettingsScreen(onBack: () -> Unit) {
                             index = index,
                             row = row,
                             onDelete = if (rows.size > 1) {
-                                { rows.removeAt(index); savedMessage = null }
+                                { rows.removeAt(index); accountsSavedMessage = null }
                             } else null,
-                            onAnyChange = { savedMessage = null }
+                            onAnyChange = { accountsSavedMessage = null }
                         )
                     }
                     Spacer(modifier = Modifier.height(12.dp))
@@ -107,7 +108,30 @@ fun SettingsScreen(onBack: () -> Unit) {
                     Text(text = "+ Add Account (${rows.size} so far)", color = CyanPrimary)
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Button(
+                    onClick = {
+                        val validAccounts = rows
+                            .filter { it.accountId.isNotBlank() && it.apiToken.isNotBlank() }
+                            .map { CloudflareAccount(it.accountId, it.apiToken) }
+                        store.accounts = validAccounts
+                        accountsSavedMessage = "${validAccounts.size} account(s) محفوظ ہو گئے"
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
+                ) {
+                    Text(text = "Save Cloudflare Accounts", color = BackgroundDark, fontWeight = FontWeight.Bold)
+                }
+                accountsSavedMessage?.let {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = "✅ ", fontSize = 13.sp)
+                        Text(text = it, color = TextSecondary, fontSize = 13.sp)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(28.dp))
                 Text(text = "YouTube Data API Key (اختیاری)", color = CyanPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
@@ -119,37 +143,32 @@ fun SettingsScreen(onBack: () -> Unit) {
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = youtubeApiKey,
-                    onValueChange = { youtubeApiKey = it; savedMessage = null },
+                    onValueChange = { youtubeApiKey = it; youtubeSavedMessage = null },
                     label = { Text("YouTube API Key") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     colors = fieldColors()
                 )
+                Spacer(modifier = Modifier.height(12.dp))
+                Button(
+                    onClick = {
+                        store.youtubeApiKey = youtubeApiKey
+                        youtubeSavedMessage = if (youtubeApiKey.isBlank()) "YouTube key khali save hui (autocomplete use hoga)" else "YouTube API key محفوظ ہو گئی"
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
+                ) {
+                    Text(text = "Save YouTube Key", color = BackgroundDark, fontWeight = FontWeight.Bold)
+                }
+                youtubeSavedMessage?.let {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = "✅ ", fontSize = 13.sp)
+                        Text(text = it, color = TextSecondary, fontSize = 13.sp)
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(20.dp))
-            }
-
-            Button(
-                onClick = {
-                    val validAccounts = rows
-                        .filter { it.accountId.isNotBlank() && it.apiToken.isNotBlank() }
-                        .map { CloudflareAccount(it.accountId, it.apiToken) }
-                    store.accounts = validAccounts
-                    store.youtubeApiKey = youtubeApiKey
-                    savedMessage = "${validAccounts.size} account(s) محفوظ ہو گئے"
-                },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
-            ) {
-                Text(text = "Save All", color = BackgroundDark, fontWeight = FontWeight.Bold)
-            }
-
-            savedMessage?.let {
-                Spacer(modifier = Modifier.height(10.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(text = "✅ ", fontSize = 13.sp)
-                    Text(text = it, color = TextSecondary, fontSize = 13.sp)
-                }
             }
         }
     }

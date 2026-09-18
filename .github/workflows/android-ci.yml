@@ -23,6 +23,14 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # Explicit package list: without this, the action's default set
+          # includes the legacy standalone "tools" package, which Google
+          # removed from the SDK repository — the whole step now fails
+          # with "Failed to find package 'tools'" before the build even
+          # starts. platform-tools + this project's exact compileSdk (36)
+          # + a matching build-tools version is everything gradle needs.
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
 
       # Caches ~/.gradle (downloaded dependencies) and the Gradle build
       # cache between runs, keyed off gradle files — a run with no

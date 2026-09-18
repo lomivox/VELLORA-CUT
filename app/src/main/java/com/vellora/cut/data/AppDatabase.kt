@@ -9,6 +9,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.vellora.cut.autogen.data.AutoGenDao
 import com.vellora.cut.autogen.data.AutoGenProjectEntity
 import com.vellora.cut.autogen.data.PromptEntity
+import com.vellora.cut.autogen.data.ShortMetadataDao
+import com.vellora.cut.autogen.data.ShortMetadataEntity
 
 /**
  * v4 -> v5: added PromptEntity.manualDurationMs (per-image manual duration
@@ -42,15 +44,42 @@ val MIGRATION_6_7 = object : Migration(6, 7) {
     }
 }
 
+/** v7 -> v8: new table for the Shorts Metadata tool — a project here is any
+ * Gallery video the person picked to generate a Title/Description/Tags/
+ * Hashtags for, completely separate from AutoGen's own projects table. */
+val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `short_metadata_projects` (
+                `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                `videoUri` TEXT NOT NULL,
+                `videoFileName` TEXT NOT NULL,
+                `createdAt` INTEGER NOT NULL,
+                `status` TEXT NOT NULL,
+                `errorMessage` TEXT,
+                `transcript` TEXT,
+                `researchedKeywords` TEXT,
+                `generatedTitle` TEXT,
+                `generatedDescription` TEXT,
+                `generatedTags` TEXT,
+                `generatedHashtags` TEXT
+            )
+            """.trimIndent()
+        )
+    }
+}
+
 @Database(
     entities = [
-        AutoGenProjectEntity::class, PromptEntity::class
+        AutoGenProjectEntity::class, PromptEntity::class, ShortMetadataEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun autoGenDao(): AutoGenDao
+    abstract fun shortMetadataDao(): ShortMetadataDao
 
     companion object {
         @Volatile private var INSTANCE: AppDatabase? = null
@@ -62,7 +91,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "vellora.db"
                 )
-                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                     // Safety net ONLY for a version jump with no migration
                     // listed above (e.g. someone on a version older than 4,
                     // or a future bump where a Migration was forgotten) —

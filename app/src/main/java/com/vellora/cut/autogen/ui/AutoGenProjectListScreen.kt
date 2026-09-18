@@ -26,7 +26,8 @@ fun AutoGenProjectListScreen(
     onNewProject: () -> Unit,
     onOpenProject: (Long) -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenTimeline: (Long) -> Unit
+    onOpenTimeline: (Long) -> Unit,
+    onOpenShortsMetadata: () -> Unit
 ) {
     val dao = db.autoGenDao()
     val scope = rememberCoroutineScope()
@@ -87,6 +88,9 @@ fun AutoGenProjectListScreen(
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold
                     )
+                }
+                TextButton(onClick = onOpenShortsMetadata) {
+                    Text(text = "🏷️", fontSize = 16.sp)
                 }
                 TextButton(onClick = onOpenSettings) {
                     Text(text = "⚙️", fontSize = 16.sp)

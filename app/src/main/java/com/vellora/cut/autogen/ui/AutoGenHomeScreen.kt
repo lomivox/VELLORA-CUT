@@ -15,6 +15,7 @@ private sealed class AutoGenScreen {
     object ProjectList : AutoGenScreen()
     object NewProject : AutoGenScreen()
     object Settings : AutoGenScreen()
+    object ShortsMetadata : AutoGenScreen()
     data class PromptPaste(val projectId: Long) : AutoGenScreen()
     data class Timeline(val projectId: Long) : AutoGenScreen()
 }
@@ -38,6 +39,7 @@ fun AutoGenHomeScreen() {
         screen = when (val current = screen) {
             is AutoGenScreen.NewProject -> AutoGenScreen.ProjectList
             is AutoGenScreen.Settings -> AutoGenScreen.ProjectList
+            is AutoGenScreen.ShortsMetadata -> AutoGenScreen.ProjectList
             is AutoGenScreen.PromptPaste -> AutoGenScreen.ProjectList
             is AutoGenScreen.Timeline -> AutoGenScreen.PromptPaste(current.projectId)
             is AutoGenScreen.ProjectList -> current
@@ -51,7 +53,12 @@ fun AutoGenHomeScreen() {
                 onNewProject = { screen = AutoGenScreen.NewProject },
                 onOpenProject = { id -> screen = AutoGenScreen.PromptPaste(id) },
                 onOpenSettings = { screen = AutoGenScreen.Settings },
-                onOpenTimeline = { id -> screen = AutoGenScreen.Timeline(id) }
+                onOpenTimeline = { id -> screen = AutoGenScreen.Timeline(id) },
+                onOpenShortsMetadata = { screen = AutoGenScreen.ShortsMetadata }
+            )
+
+            is AutoGenScreen.ShortsMetadata -> ShortsMetadataScreen(
+                onBack = { screen = AutoGenScreen.ProjectList }
             )
 
             is AutoGenScreen.NewProject -> NewAutoGenProjectScreen(

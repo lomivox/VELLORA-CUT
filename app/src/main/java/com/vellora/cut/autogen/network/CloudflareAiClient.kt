@@ -152,4 +152,66 @@ class CloudflareAiClient {
             }.filter { it.text.isNotBlank() }
         }
     }
+
+    /**
+     * Runs a text prompt through Cloudflare's Llama instruct model and
+     * returns the raw text reply — used by ShortsMetadataGenerator to turn
+     * (transcript + real YouTube keywords) into a Title/Description/Tags/
+     * Hashtags block. Same pooled-account error handling as the other two.
+     */
+    fun generateText(
+        prompt: String,
+        accountId: String,
+        apiToken: String
+    ): String {
+        val model = "@cf/meta/llama-3.1-8b-instruct"
+        val url = "https://api.cloudflare.com/client/v4/accounts/$accountId/ai/run/$model"
+
+        val messages = org.json.JSONArray().put(
+            JSONObject().apply {
+                put("role", "user")
+                put("content", prompt)
+            }
+        )
+        val body = JSONObject().apply {
+            put("messages", messages)
+        }.toString().toRequestBody("application/json".toMediaType())
+
+        val request = Request.Builder()
+            .url(url)
+            .addHeader("Authorization", "Bearer $apiToken")
+            .post(body)
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            val responseBody = response.body?.string()
+                ?: throw CloudflareApiException("Empty response from Cloudflare")
+
+            if (response.code == 429 || responseBody.contains("\"code\":4006")) {
+                throw CloudflareApiException(
+                    "Is account ka aaj ka quota khatam ho chuka hai",
+                    isQuotaExceeded = true
+                )
+            }
+
+            if (!response.isSuccessful) {
+                val errorMsg = try {
+                    JSONObject(responseBody)
+                        .optJSONArray("errors")?.optJSONObject(0)?.optString("message")
+                } catch (e: Exception) { null }
+                throw CloudflareApiException(errorMsg ?: "HTTP ${response.code}: ${response.message}")
+            }
+
+            val json = JSONObject(responseBody)
+            if (!json.optBoolean("success", false)) {
+                val errorMsg = json.optJSONArray("errors")?.optJSONObject(0)?.optString("message")
+                throw CloudflareApiException(errorMsg ?: "Cloudflare reported failure")
+            }
+
+            val result = json.optJSONObject("result") ?: throw CloudflareApiException("No result in response")
+            return result.optString("response").ifBlank {
+                throw CloudflareApiException("Khaali response mila")
+            }
+        }
+    }
 }

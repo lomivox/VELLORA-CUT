@@ -242,3 +242,41 @@ data class PromptEntity(
      * (Scale/Hold-Last sync mode decides it, as before). */
     val manualDurationMs: Long? = null
 )
+
+// ============================================================================
+// Shorts Metadata Tool — a SEPARATE feature from AutoGen: pick any video
+// already in the phone's Gallery (not just AutoGen-rendered ones) and
+// generate a real, research-backed Title/Description/Tags/Hashtags for it.
+// ============================================================================
+
+object ShortMetadataStatus {
+    const val IDLE = "idle"
+    const val EXTRACTING_AUDIO = "extracting_audio"
+    const val TRANSCRIBING = "transcribing"
+    const val RESEARCHING_KEYWORDS = "researching_keywords"
+    const val GENERATING = "generating"
+    const val DONE = "done"
+    const val ERROR = "error"
+}
+
+@Entity(tableName = "short_metadata_projects")
+data class ShortMetadataEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    /** content:// URI of the Gallery video this was generated for. */
+    val videoUri: String,
+    val videoFileName: String,
+    val createdAt: Long,
+    val status: String = ShortMetadataStatus.IDLE,
+    val errorMessage: String? = null,
+    /** Real Whisper transcript of the video's audio track. */
+    val transcript: String? = null,
+    /** Real YouTube search-suggest keywords fetched for this video's topic
+     * (comma-separated) — what the AI's Title/Tags were actually grounded in. */
+    val researchedKeywords: String? = null,
+    val generatedTitle: String? = null,
+    val generatedDescription: String? = null,
+    /** Comma-separated, for YouTube's own Tags field. */
+    val generatedTags: String? = null,
+    /** Space-separated #hashtags, ready to paste into the description. */
+    val generatedHashtags: String? = null
+)

@@ -73,7 +73,12 @@ object YouTubeAuthManager {
             } catch (e: UserRecoverableAuthException) {
                 // First-time consent (or a revoked grant) — the system needs
                 // to show its own screen once; e.intent handles that.
-                TokenResult.NeedsUserAction(e.intent)
+                val consentIntent = e.intent
+                if (consentIntent != null) {
+                    TokenResult.NeedsUserAction(consentIntent)
+                } else {
+                    TokenResult.Error(e.message ?: "Consent screen nahi mil saka")
+                }
             } catch (e: Exception) {
                 TokenResult.Error(e.message ?: "Token nahi mil saka")
             }

@@ -70,7 +70,7 @@ fun SettingsScreen(onBack: () -> Unit) {
     val signInLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        val task = GoogleSignIn.getSignedInAccountFromTask(result.data)
+        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
         try {
             val account = task.getResult(com.google.android.gms.common.api.ApiException::class.java)
             signedInAccountEmail = account.email

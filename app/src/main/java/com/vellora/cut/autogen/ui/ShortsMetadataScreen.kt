@@ -27,6 +27,8 @@ import androidx.compose.ui.unit.sp
 import com.vellora.cut.autogen.data.SecureCredentialStore
 import com.vellora.cut.autogen.data.ShortMetadataEntity
 import com.vellora.cut.autogen.data.ShortMetadataStatus
+import com.vellora.cut.autogen.network.YouTubeAuthManager
+import com.vellora.cut.autogen.network.YouTubeUploader
 import com.vellora.cut.autogen.shorts.ShortsMetadataGenerator
 import com.vellora.cut.data.AppDatabase
 import com.vellora.cut.ui.theme.BackgroundDark
@@ -35,7 +37,11 @@ import com.vellora.cut.ui.theme.SurfaceDark
 import com.vellora.cut.ui.theme.SurfaceVariant
 import com.vellora.cut.ui.theme.TextPrimary
 import com.vellora.cut.ui.theme.TextSecondary
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
 
 @Composable
 fun ShortsMetadataScreen(onBack: () -> Unit) {
@@ -49,6 +55,50 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
     var isWorking by remember { mutableStateOf(false) }
     var statusText by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    val credStore = remember { SecureCredentialStore(context) }
+    var autoUploadEnabled by remember { mutableStateOf(credStore.autoUploadEnabled) }
+
+    suspend fun uploadToYouTube(entity: ShortMetadataEntity): ShortMetadataEntity {
+        val account = YouTubeAuthManager.getCurrentAccount(context)
+            ?: return entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = "Pehle Settings mein YouTube account connect karein")
+
+        val tokenResult = YouTubeAuthManager.getFreshAccessToken(context, account)
+        val accessToken = when (tokenResult) {
+            is YouTubeAuthManager.TokenResult.Success -> tokenResult.accessToken
+            is YouTubeAuthManager.TokenResult.NeedsUserAction ->
+                return entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = "YouTube permission dobara consent chahti hai — Settings mein Disconnect kar ke dobara Connect karein")
+            is YouTubeAuthManager.TokenResult.Error ->
+                return entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = tokenResult.message)
+        }
+
+        val videoFile = withContext(Dispatchers.IO) {
+            resolveVideoToLocalFile(context, entity.videoUri)
+        } ?: return entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = "Video file nahi mili upload ke liye")
+
+        val tags = entity.generatedTags.orEmpty().split(",").map { it.trim() }.filter { it.isNotBlank() }
+        val fullDescription = buildString {
+            append(entity.generatedDescription.orEmpty())
+            if (!entity.generatedHashtags.isNullOrBlank()) {
+                append("\n\n")
+                append(entity.generatedHashtags)
+            }
+        }
+
+        val uploadResult = withContext(Dispatchers.IO) {
+            YouTubeUploader.upload(
+                accessToken = accessToken,
+                videoFile = videoFile,
+                title = entity.generatedTitle ?: entity.videoFileName,
+                description = fullDescription,
+                tags = tags
+            )
+        }
+
+        return uploadResult.fold(
+            onSuccess = { r -> entity.copy(status = ShortMetadataStatus.UPLOADED, youtubeVideoUrl = r.videoUrl) },
+            onFailure = { e -> entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = "Upload fail: ${e.message}") }
+        )
+    }
 
     val videoPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -89,7 +139,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
             isWorking = false
 
             result.onSuccess { meta ->
-                val updated = entity.copy(
+                var updated = entity.copy(
                     status = ShortMetadataStatus.DONE,
                     transcript = meta.transcript,
                     researchedKeywords = meta.researchedKeywords.joinToString(","),
@@ -100,6 +150,20 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
                 )
                 dao.update(updated)
                 activeProject = updated
+
+                if (autoUploadEnabled) {
+                    isWorking = true
+                    statusText = "uploading"
+                    updated = updated.copy(status = ShortMetadataStatus.UPLOADING)
+                    activeProject = updated
+                    updated = uploadToYouTube(updated)
+                    dao.update(updated)
+                    activeProject = updated
+                    isWorking = false
+                    if (updated.status == ShortMetadataStatus.ERROR) {
+                        errorMessage = updated.errorMessage
+                    }
+                }
             }.onFailure { e ->
                 val updated = entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = e.message)
                 dao.update(updated)
@@ -168,6 +232,30 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
 
         Spacer(modifier = Modifier.height(12.dp))
 
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = "Auto-upload YouTube پر", color = TextPrimary, fontSize = 13.sp)
+                Text(
+                    text = "Metadata مکمل ہوتے ہی خودکار اپلوڈ ہو جائے (اپنے connected account میں)",
+                    color = TextSecondary,
+                    fontSize = 10.sp
+                )
+            }
+            Switch(
+                checked = autoUploadEnabled,
+                onCheckedChange = { autoUploadEnabled = it; credStore.autoUploadEnabled = it },
+                colors = SwitchDefaults.colors(checkedTrackColor = CyanPrimary)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
         Button(
             onClick = { videoPicker.launch("video/*") },
             enabled = !isWorking,
@@ -202,7 +290,10 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
         }
 
         val shownProject = activeProject
-        if (shownProject != null && shownProject.status == ShortMetadataStatus.DONE) {
+        if (shownProject != null && shownProject.status in setOf(
+                ShortMetadataStatus.DONE, ShortMetadataStatus.UPLOADING, ShortMetadataStatus.UPLOADED
+            )
+        ) {
             ResultCard(shownProject)
         }
 
@@ -256,6 +347,12 @@ private fun ResultCard(project: ShortMetadataEntity) {
         CopyableField(context, "Tags", project.generatedTags.orEmpty())
         Spacer(modifier = Modifier.height(10.dp))
         CopyableField(context, "Hashtags", project.generatedHashtags.orEmpty())
+
+        if (project.youtubeVideoUrl != null) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(text = "✅ YouTube پر upload ہو گئی", color = CyanPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Text(text = project.youtubeVideoUrl, color = TextSecondary, fontSize = 12.sp)
+        }
     }
 }
 
@@ -286,7 +383,26 @@ private fun statusLabel(status: String): String = when (status) {
     ShortMetadataStatus.TRANSCRIBING -> "Sun kar likha ja raha hai (real transcription)…"
     ShortMetadataStatus.RESEARCHING_KEYWORDS -> "YouTube se real keywords dhoonde ja rahe hain…"
     ShortMetadataStatus.GENERATING -> "AI Title/Description/Tags bana raha hai…"
+    ShortMetadataStatus.UPLOADING -> "YouTube par upload ho raha hai…"
     else -> "Kaam ho raha hai…"
+}
+
+private fun resolveVideoToLocalFile(context: Context, uriString: String): File? {
+    return try {
+        val uri = Uri.parse(uriString)
+        if (uri.scheme == null || uri.scheme == "file") {
+            File(uri.path ?: uriString)
+        } else {
+            val dir = File(context.cacheDir, "shorts_upload").apply { mkdirs() }
+            val dest = File(dir, "upload_${System.currentTimeMillis()}.mp4")
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                FileOutputStream(dest).use { output -> input.copyTo(output) }
+            } ?: return null
+            dest
+        }
+    } catch (e: Exception) {
+        null
+    }
 }
 
 private fun queryDisplayName(context: Context, uri: Uri): String? {

@@ -70,11 +70,18 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
     }
 }
 
+/** v8 -> v9: track a video's YouTube upload result (auto-upload feature). */
+val MIGRATION_8_9 = object : Migration(8, 9) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE short_metadata_projects ADD COLUMN youtubeVideoUrl TEXT")
+    }
+}
+
 @Database(
     entities = [
         AutoGenProjectEntity::class, PromptEntity::class, ShortMetadataEntity::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -91,7 +98,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "vellora.db"
                 )
-                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                     // Safety net ONLY for a version jump with no migration
                     // listed above (e.g. someone on a version older than 4,
                     // or a future bump where a Migration was forgotten) —

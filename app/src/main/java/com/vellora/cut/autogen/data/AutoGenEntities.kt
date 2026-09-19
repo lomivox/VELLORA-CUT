@@ -256,6 +256,8 @@ object ShortMetadataStatus {
     const val RESEARCHING_KEYWORDS = "researching_keywords"
     const val GENERATING = "generating"
     const val DONE = "done"
+    const val UPLOADING = "uploading"
+    const val UPLOADED = "uploaded"
     const val ERROR = "error"
 }
 
@@ -278,5 +280,7 @@ data class ShortMetadataEntity(
     /** Comma-separated, for YouTube's own Tags field. */
     val generatedTags: String? = null,
     /** Space-separated #hashtags, ready to paste into the description. */
-    val generatedHashtags: String? = null
+    val generatedHashtags: String? = null,
+    /** Set once this video was actually uploaded to YouTube. */
+    val youtubeVideoUrl: String? = null
 )

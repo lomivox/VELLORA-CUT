@@ -108,6 +108,16 @@ dependencies {
     // https://github.com/moizhassankh/ffmpeg-kit-android-16KB
     implementation("com.moizhassan.ffmpeg:ffmpeg-kit-16kb:6.1.1")
 
+    // YouTube auto-upload: Google Sign-In + OAuth scope for the YouTube Data
+    // API. PINNED to 21.5.1 deliberately — Google's Aug 2026 update
+    // (22.0.0+) removed the classic GoogleSignInClient/GoogleSignInOptions
+    // APIs entirely in favor of Credential Manager, which (as of this
+    // writing) has no equivalently simple, well-documented path for
+    // requesting a specific API scope (like youtube.upload) the way
+    // GoogleAuthUtil.getToken() does. Revisit this pin once Credential
+    // Manager's scope-authorization story is mature.
+    implementation("com.google.android.gms:play-services-auth:21.5.1")
+
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
 }

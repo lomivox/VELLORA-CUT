@@ -84,6 +84,12 @@ class SecureCredentialStore(context: Context) {
         get() = prefs.getString(KEY_YOUTUBE_API_KEY, "") ?: ""
         set(value) = prefs.edit().putString(KEY_YOUTUBE_API_KEY, value).apply()
 
+    /** Default for the auto-upload toggle shown in Shorts Metadata — off
+     * by default so nothing goes to YouTube without an explicit choice. */
+    var autoUploadEnabled: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_UPLOAD, false)
+        set(value) = prefs.edit().putBoolean(KEY_AUTO_UPLOAD, value).apply()
+
     fun hasCredentials(): Boolean = accounts.isNotEmpty()
 
     companion object {
@@ -92,6 +98,7 @@ class SecureCredentialStore(context: Context) {
         private const val KEY_LEGACY_API_TOKEN = "cf_api_token"
         private const val KEY_MODEL = "cf_image_model"
         private const val KEY_YOUTUBE_API_KEY = "youtube_data_api_key"
+        private const val KEY_AUTO_UPLOAD = "youtube_auto_upload_enabled"
         const val DEFAULT_MODEL = "@cf/black-forest-labs/flux-1-schnell"
     }
 }

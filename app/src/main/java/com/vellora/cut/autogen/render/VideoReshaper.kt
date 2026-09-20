@@ -19,6 +19,43 @@ object VideoReshaper {
 
     enum class Target { SHORT, LONG }
 
+    /** Re-encodes video+audio to plain, standard H.264+AAC — no crop, no
+     * aspect-ratio change. For an "Auto" upload (no Short/Long choice) the
+     * ORIGINAL file's bytes normally go straight to YouTube untouched; if
+     * that original file has any unusual codec/container quirk (an odd
+     * profile, variable frame rate, a camera app's non-standard muxing),
+     * YouTube's transcoder can get stuck on "Processing will begin
+     * shortly" indefinitely — the same video re-uploaded byte-for-byte
+     * fails the same way every time, since the file itself is the problem,
+     * not a transient server issue. Re-encoding to a plain, boring H.264/
+     * AAC MP4 first is the standard fix for that ("re-export with standard
+     * settings"). Returns null only if the re-encode itself fails, in
+     * which case the caller should fall back to the original file. */
+    suspend fun normalize(context: Context, sourceFile: File): File? =
+        suspendCancellableCoroutine { cont ->
+            val workDir = File(context.cacheDir, "shorts_reshape").apply { mkdirs() }
+            val outputFile = File(workDir, "normalized_${System.currentTimeMillis()}.mp4")
+
+            val args = arrayOf(
+                "-y", "-i", sourceFile.absolutePath,
+                "-c:v", "h264_mediacodec",
+                "-b:v", "6M",
+                "-pix_fmt", "yuv420p", // the one pixel format every YouTube encoder path reliably accepts
+                "-r", "30", // normalize variable/unusual frame rates
+                "-c:a", "aac", "-b:a", "128k",
+                "-movflags", "+faststart",
+                outputFile.absolutePath
+            )
+
+            FFmpegKit.executeWithArgumentsAsync(args) { session ->
+                if (ReturnCode.isSuccess(session.returnCode) && outputFile.exists()) {
+                    cont.resume(outputFile)
+                } else {
+                    cont.resume(null)
+                }
+            }
+        }
+
     /** Returns the original [sourceFile] unchanged if it already matches
      * [target]'s shape/duration requirements — reshaping only runs when
      * actually needed, since re-encoding a video is real, non-trivial work. */
@@ -59,7 +96,8 @@ object VideoReshaper {
             args += listOf(
                 "-c:v", "h264_mediacodec",
                 "-b:v", "6M",
-                "-c:a", "copy",
+                "-pix_fmt", "yuv420p",
+                "-c:a", "aac", "-b:a", "128k",
                 "-movflags", "+faststart",
                 outputFile.absolutePath
             )

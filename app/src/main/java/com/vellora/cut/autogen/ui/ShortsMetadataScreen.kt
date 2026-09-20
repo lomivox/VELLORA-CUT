@@ -90,7 +90,17 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
             }
             com.vellora.cut.autogen.render.VideoReshaper.reshapeIfNeeded(context, videoFile, target)
                 ?: return entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = "Video ko Short/Long shape mein badalte waqt fail ho gaya")
-        } else videoFile
+        } else {
+            // "Auto" used to mean "send the original bytes untouched" — but
+            // an original file with any unusual codec/container quirk can
+            // then get permanently stuck on YouTube's "Processing will
+            // begin shortly" (the SAME file fails the same way every retry,
+            // since the file itself is the problem, not the network or a
+            // transient server issue). Normalizing to plain H.264/AAC first
+            // is the standard fix, and costs little for a file that was
+            // already fine.
+            com.vellora.cut.autogen.render.VideoReshaper.normalize(context, videoFile) ?: videoFile
+        }
 
         val tags = entity.generatedTags.orEmpty().split(",").map { it.trim() }.filter { it.isNotBlank() }
         val fullDescription = buildString {

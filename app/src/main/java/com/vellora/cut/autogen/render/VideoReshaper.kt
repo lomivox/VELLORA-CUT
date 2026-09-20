@@ -56,26 +56,24 @@ object VideoReshaper {
             }
         }
 
-    /** Returns the original [sourceFile] unchanged if it already matches
-     * [target]'s shape/duration requirements — reshaping only runs when
-     * actually needed, since re-encoding a video is real, non-trivial work. */
+    /** Always re-encodes — no "skip if already the right shape" fast path
+     * anymore. That optimization meant a video that was ALREADY vertical
+     * (so "Short" needed no crop) passed through completely untouched,
+     * carrying forward the exact same codec/container quirk that gets a
+     * video stuck on YouTube's "Processing will begin shortly" forever —
+     * confirmed by the same video failing the same way under "Short" too,
+     * not just "Auto". Every upload path now goes through one real
+     * [normalize]-equivalent encode; crop/trim are just extra filters
+     * applied within that same single pass. */
     suspend fun reshapeIfNeeded(context: Context, sourceFile: File, target: Target): File? =
         suspendCancellableCoroutine { cont ->
-            val (width, height, durationMs) = probe(sourceFile) ?: run {
-                cont.resume(sourceFile) // couldn't read it — upload as-is rather than fail
-                return@suspendCancellableCoroutine
-            }
+            val (width, height, durationMs) = probe(sourceFile) ?: Probe(0, 0, 0L)
             val isVerticalOrSquare = height >= width
-            val needsCrop = when (target) {
+            val needsCrop = width > 0 && when (target) {
                 Target.SHORT -> !isVerticalOrSquare
                 Target.LONG -> isVerticalOrSquare
             }
             val needsTrim = target == Target.SHORT && durationMs > 175_000L
-
-            if (!needsCrop && !needsTrim) {
-                cont.resume(sourceFile)
-                return@suspendCancellableCoroutine
-            }
 
             val workDir = File(context.cacheDir, "shorts_reshape").apply { mkdirs() }
             val outputFile = File(workDir, "reshaped_${System.currentTimeMillis()}.mp4")
@@ -97,6 +95,7 @@ object VideoReshaper {
                 "-c:v", "h264_mediacodec",
                 "-b:v", "6M",
                 "-pix_fmt", "yuv420p",
+                "-r", "30",
                 "-c:a", "aac", "-b:a", "128k",
                 "-movflags", "+faststart",
                 outputFile.absolutePath

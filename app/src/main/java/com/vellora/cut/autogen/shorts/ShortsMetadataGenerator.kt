@@ -101,7 +101,7 @@ object ShortsMetadataGenerator {
         if (competitor != null && competitor.rankedKeywords.isNotEmpty()) {
             // Real competitor research worked: tags pooled from several
             // currently-ranking videos on this exact topic, most-shared first.
-            keywords = competitor.rankedKeywords
+            keywords = filterCompetitorNoise(competitor.rankedKeywords, transcript)
             competitorTitles = competitor.competitorTitles
         } else {
             // Fallback: YouTube's own free autocomplete — still real search
@@ -149,6 +149,46 @@ object ShortsMetadataGenerator {
         )
     }
 
+    /**
+     * Competitor tags come from OTHER people's videos — some of them are
+     * specific to THAT video (a named doctor/expert, a specific country the
+     * competitor made their video for) and have no business appearing in
+     * OUR metadata. This drops the two most common offenders — a named
+     * person's title/name, and a country/region name — unless that exact
+     * word genuinely appears in OUR OWN transcript, meaning it really is
+     * relevant here too. Generic topical multi-word phrases (which won't
+     * literally appear in the transcript verbatim, and that's fine) are
+     * left alone — this only targets named-entity-shaped keywords.
+     */
+    private fun filterCompetitorNoise(keywords: List<String>, transcript: String): List<String> {
+        val transcriptWords = transcript.lowercase()
+            .split(Regex("[^a-z0-9\\u0600-\\u06FF]+"))
+            .filter { it.isNotBlank() }
+            .toSet()
+
+        val namePrefixes = setOf("dr", "dr.", "mr", "mr.", "mrs", "mrs.", "ms", "ms.", "prof", "prof.", "sheikh", "sir")
+        val commonCountriesAndRegions = setOf(
+            "india", "pakistan", "usa", "america", "united states", "uk", "united kingdom",
+            "uae", "bangladesh", "china", "canada", "australia", "saudi arabia", "egypt",
+            "turkey", "indonesia", "nigeria", "south africa", "russia", "germany", "france"
+        )
+
+        return keywords.filter { keyword ->
+            val kw = keyword.lowercase().trim()
+            val words = kw.split(Regex("\\s+"))
+
+            val looksLikeNamedPerson = words.firstOrNull() in namePrefixes
+            val isCountryOrRegion = kw in commonCountriesAndRegions || words.any { it in commonCountriesAndRegions }
+
+            if (!looksLikeNamedPerson && !isCountryOrRegion) return@filter true // ordinary topical keyword — keep
+
+            // Named-person or country/region keyword: only keep if it (or
+            // its core words) genuinely shows up in OUR OWN transcript.
+            val coreWords = words.filter { it !in namePrefixes && it.length > 2 }
+            coreWords.isNotEmpty() && coreWords.any { it in transcriptWords }
+        }
+    }
+
     private fun buildPrompt(
         transcript: String,
         keywords: List<String>,
@@ -177,6 +217,12 @@ object ShortsMetadataGenerator {
             $languageInstruction
             $keywordsBlock
             $competitorBlock
+
+            CRITICAL RULES — read carefully, these keywords/titles came from OTHER people's videos on a similar topic, not necessarily this one:
+            - Do NOT name any specific person (doctor, expert, influencer, creator) anywhere in the Title, Description, Tags, or Hashtags UNLESS that exact person is named in the Transcript below.
+            - Do NOT mention any specific country, city, or region anywhere UNLESS it is explicitly mentioned in the Transcript below.
+            - The keyword list above is inspiration for GENERAL topic phrasing only (e.g. "mobile addiction in children" is fine even if not verbatim in the transcript) — but any keyword that names a specific person or place must be dropped unless it also appears in the Transcript.
+            - When in doubt, leave it out — a shorter, accurate tag list beats a longer one with details that don't belong to this video.
 
             Transcript:
             "${transcript.take(6000)}"

@@ -175,6 +175,12 @@ class CloudflareAiClient {
         )
         val body = JSONObject().apply {
             put("messages", messages)
+            // Without this, Cloudflare defaults to just 256 tokens (confirmed
+            // in their own April 2025 changelog) — nowhere near enough for a
+            // full Title+Description+Tags+Hashtags reply, so the response was
+            // silently cut off after the title (or partway through the
+            // description) with Tags/Hashtags missing entirely.
+            put("max_tokens", 1200)
         }.toString().toRequestBody("application/json".toMediaType())
 
         val request = Request.Builder()

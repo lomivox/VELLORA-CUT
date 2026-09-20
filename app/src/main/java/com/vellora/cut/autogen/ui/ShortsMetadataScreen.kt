@@ -58,6 +58,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
     var classificationHint by remember { mutableStateOf<String?>(null) }
     var uploadTarget by remember { mutableStateOf(com.vellora.cut.autogen.data.UploadTarget.AUTO) }
     var manualTopicText by remember { mutableStateOf("") }
+    var showHistory by remember { mutableStateOf(false) }
     val credStore = remember { SecureCredentialStore(context) }
     var autoUploadEnabled by remember { mutableStateOf(credStore.autoUploadEnabled) }
 
@@ -252,12 +253,52 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            TextButton(onClick = onBack) {
+            TextButton(onClick = { if (showHistory) showHistory = false else onBack() }) {
                 Text(text = "← Back", color = TextPrimary)
             }
-            Text(text = "Shorts Metadata", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Text(
+                text = if (showHistory) "History (${projects.size})" else "Shorts Metadata",
+                color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold
+            )
             Spacer(modifier = Modifier.width(60.dp))
         }
+
+        if (showHistory) {
+            // Full page, nothing else sharing the space — this used to be a
+            // few cramped rows squeezed at the bottom of the main screen
+            // where a long list, or a tall result card above it, could push
+            // it out of view entirely. Now it's its own screen.
+            LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                items(projects) { p ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { activeProject = p; errorMessage = null; showHistory = false }
+                            .padding(horizontal = 16.dp, vertical = 14.dp)
+                    ) {
+                        Column {
+                            Text(
+                                text = p.generatedTitle ?: p.videoFileName,
+                                color = TextPrimary,
+                                fontSize = 14.sp,
+                                maxLines = 2
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(text = p.status, color = TextSecondary, fontSize = 11.sp)
+                        }
+                    }
+                    HorizontalDivider(color = SurfaceVariant)
+                }
+            }
+            return@Column
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+        ) {
 
         Text(
             text = "Gallery se koi bhi video chunein — real transcript + YouTube keyword research se Title/Description/Tags/Hashtags banega",
@@ -448,32 +489,16 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
         }
 
         Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = "Pichli metadata",
-            color = TextSecondary,
-            fontSize = 12.sp,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
-        LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
-            items(projects) { p ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { activeProject = p; errorMessage = null }
-                        .padding(horizontal = 16.dp, vertical = 10.dp)
-                ) {
-                    Column {
-                        Text(
-                            text = p.generatedTitle ?: p.videoFileName,
-                            color = TextPrimary,
-                            fontSize = 13.sp,
-                            maxLines = 1
-                        )
-                        Text(text = p.status, color = TextSecondary, fontSize = 11.sp)
-                    }
-                }
-            }
+        OutlinedButton(
+            onClick = { showHistory = true },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+        ) {
+            Text(text = "📋 History (${projects.size})", color = TextPrimary)
         }
+        Spacer(modifier = Modifier.height(20.dp))
+        } // end scrollable content Column
     }
 }
 
@@ -487,8 +512,6 @@ private fun ResultCard(project: ShortMetadataEntity, onRetry: () -> Unit) {
             .clip(RoundedCornerShape(12.dp))
             .background(SurfaceDark)
             .padding(14.dp)
-            .heightIn(max = 320.dp)
-            .verticalScroll(rememberScrollState())
     ) {
         if (project.status == ShortMetadataStatus.ERROR) {
             Text(text = "⚠ ${project.errorMessage ?: "Kuch ghalat ho gaya"}", color = Color(0xFFFF6B6B), fontSize = 12.sp)

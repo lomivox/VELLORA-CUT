@@ -34,7 +34,7 @@ object YouTubeCompetitorResearch {
 
     /** Returns null (never throws) if the API key is missing/invalid or the
      * request fails — caller falls back to [YouTubeSuggest] in that case. */
-    fun research(seed: String, apiKey: String, maxVideos: Int = 8): Result? {
+    fun research(seed: String, apiKey: String, maxVideos: Int = 20): Result? {
         if (apiKey.isBlank() || seed.isBlank()) return null
         return try {
             val videoIds = searchTopVideos(seed, apiKey, maxVideos)

@@ -197,7 +197,7 @@ object ShortsMetadataGenerator {
     ): String {
         val keywordsBlock = if (keywords.isNotEmpty()) {
             "Real keywords/tags pooled from currently top-ranking YouTube videos on this exact topic " +
-                "(most commonly used first — favor the ones near the top): ${keywords.take(25).joinToString(", ")}"
+                "(most commonly used first — favor the ones near the top): ${keywords.take(35).joinToString(", ")}"
         } else {
             "(no extra keyword data available)"
         }
@@ -230,8 +230,8 @@ object ShortsMetadataGenerator {
             Reply in EXACTLY this format, nothing else, no extra commentary:
             TITLE: <a punchy, clickable, SEO-friendly title, under 70 characters>
             DESCRIPTION: <a 2-3 sentence description that naturally includes relevant keywords>
-            TAGS: <8-12 comma-separated tags, no # symbol>
-            HASHTAGS: <5-8 space-separated #hashtags>
+            TAGS: <12-15 comma-separated tags, no # symbol>
+            HASHTAGS: <6-10 space-separated #hashtags>
         """.trimIndent()
     }
 
@@ -240,15 +240,17 @@ object ShortsMetadataGenerator {
 
     private fun parseResponse(raw: String): Parsed {
         fun extract(marker: String, nextMarkers: List<String>): String {
-            val startIdx = raw.indexOf(marker)
+            // Case-insensitive search — the model may occasionally emit
+            // "Title:" instead of "TITLE:" despite the prompt's instruction.
+            val startIdx = raw.indexOf(marker, ignoreCase = true)
             if (startIdx == -1) return ""
             val afterMarker = startIdx + marker.length
             var endIdx = raw.length
             for (next in nextMarkers) {
-                val idx = raw.indexOf(next, afterMarker)
+                val idx = raw.indexOf(next, afterMarker, ignoreCase = true)
                 if (idx != -1 && idx < endIdx) endIdx = idx
             }
-            return raw.substring(afterMarker, endIdx).trim()
+            return raw.substring(afterMarker, endIdx).trim().trim('*', '#', ' ')
         }
 
         val allMarkers = listOf("TITLE:", "DESCRIPTION:", "TAGS:", "HASHTAGS:")

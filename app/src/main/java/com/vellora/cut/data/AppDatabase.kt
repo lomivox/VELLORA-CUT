@@ -77,11 +77,19 @@ val MIGRATION_8_9 = object : Migration(8, 9) {
     }
 }
 
+/** v9 -> v10: real Short/Long reshape choice, stored per project so retry
+ * uses the same target the person originally picked. */
+val MIGRATION_9_10 = object : Migration(9, 10) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE short_metadata_projects ADD COLUMN uploadTarget TEXT NOT NULL DEFAULT 'auto'")
+    }
+}
+
 @Database(
     entities = [
         AutoGenProjectEntity::class, PromptEntity::class, ShortMetadataEntity::class
     ],
-    version = 9,
+    version = 10,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -98,7 +106,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "vellora.db"
                 )
-                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                     // Safety net ONLY for a version jump with no migration
                     // listed above (e.g. someone on a version older than 4,
                     // or a future bump where a Migration was forgotten) —

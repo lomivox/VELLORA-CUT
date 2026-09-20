@@ -55,10 +55,16 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
     var isWorking by remember { mutableStateOf(false) }
     var statusText by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var classificationHint by remember { mutableStateOf<String?>(null) }
+    var uploadTarget by remember { mutableStateOf(com.vellora.cut.autogen.data.UploadTarget.AUTO) }
+    var manualTopicText by remember { mutableStateOf("") }
     val credStore = remember { SecureCredentialStore(context) }
     var autoUploadEnabled by remember { mutableStateOf(credStore.autoUploadEnabled) }
 
     suspend fun uploadToYouTube(entity: ShortMetadataEntity): ShortMetadataEntity {
+        if (entity.videoUri.isBlank()) {
+            return entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = "Is entry ke sath koi video nahi hai (sirf topic se bana tha) — upload nahi ho sakti")
+        }
         val account = YouTubeAuthManager.getCurrentAccount(context)
             ?: return entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = "Pehle Settings mein YouTube account connect karein")
 
@@ -75,6 +81,16 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
             resolveVideoToLocalFile(context, entity.videoUri)
         } ?: return entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = "Video file nahi mili upload ke liye")
 
+        val reshapedFile = if (entity.uploadTarget != com.vellora.cut.autogen.data.UploadTarget.AUTO) {
+            val target = if (entity.uploadTarget == com.vellora.cut.autogen.data.UploadTarget.SHORT) {
+                com.vellora.cut.autogen.render.VideoReshaper.Target.SHORT
+            } else {
+                com.vellora.cut.autogen.render.VideoReshaper.Target.LONG
+            }
+            com.vellora.cut.autogen.render.VideoReshaper.reshapeIfNeeded(context, videoFile, target)
+                ?: return entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = "Video ko Short/Long shape mein badalte waqt fail ho gaya")
+        } else videoFile
+
         val tags = entity.generatedTags.orEmpty().split(",").map { it.trim() }.filter { it.isNotBlank() }
         val fullDescription = buildString {
             append(entity.generatedDescription.orEmpty())
@@ -87,7 +103,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
         val uploadResult = withContext(Dispatchers.IO) {
             YouTubeUploader.upload(
                 accessToken = accessToken,
-                videoFile = videoFile,
+                videoFile = reshapedFile,
                 title = entity.generatedTitle ?: entity.videoFileName,
                 description = fullDescription,
                 tags = tags
@@ -98,6 +114,61 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
             onSuccess = { r -> entity.copy(status = ShortMetadataStatus.UPLOADED, youtubeVideoUrl = r.videoUrl) },
             onFailure = { e -> entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = "Upload fail: ${e.message}") }
         )
+    }
+
+    suspend fun runGenerationFlow(entity: ShortMetadataEntity, videoUriForGen: String?, manualTopic: String?) {
+        val accounts = SecureCredentialStore(context).accounts
+        if (accounts.isEmpty()) {
+            errorMessage = "Pehle Settings mein Cloudflare account add karein"
+            val updated = entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = errorMessage)
+            dao.update(updated)
+            activeProject = updated
+            return
+        }
+        isWorking = true
+
+        val result = ShortsMetadataGenerator.generate(
+            context = context,
+            videoUri = videoUriForGen,
+            manualTopic = manualTopic,
+            accounts = accounts,
+            language = outputLanguage,
+            onStatusChange = { statusText = it }
+        )
+        isWorking = false
+
+        result.onSuccess { meta ->
+            var updated = entity.copy(
+                status = ShortMetadataStatus.DONE,
+                transcript = meta.transcript,
+                researchedKeywords = meta.researchedKeywords.joinToString(","),
+                generatedTitle = meta.title,
+                generatedDescription = meta.description,
+                generatedTags = meta.tags,
+                generatedHashtags = meta.hashtags
+            )
+            dao.update(updated)
+            activeProject = updated
+
+            if (autoUploadEnabled && updated.videoUri.isNotBlank()) {
+                isWorking = true
+                statusText = "uploading"
+                updated = updated.copy(status = ShortMetadataStatus.UPLOADING)
+                activeProject = updated
+                updated = uploadToYouTube(updated)
+                dao.update(updated)
+                activeProject = updated
+                isWorking = false
+                if (updated.status == ShortMetadataStatus.ERROR) {
+                    errorMessage = updated.errorMessage
+                }
+            }
+        }.onFailure { e ->
+            val updated = entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = e.message)
+            dao.update(updated)
+            activeProject = updated
+            errorMessage = e.message
+        }
     }
 
     val videoPicker = rememberLauncherForActivityResult(
@@ -111,64 +182,60 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
         } catch (e: SecurityException) { /* some providers don't support it — fine for this session */ }
 
         errorMessage = null
+        classificationHint = predictYouTubeClassification(context, uri)
         val fileName = queryDisplayName(context, uri) ?: "video"
         scope.launch {
-            val accounts = SecureCredentialStore(context).accounts
-            if (accounts.isEmpty()) {
-                errorMessage = "Pehle Settings mein Cloudflare account add karein"
-                return@launch
-            }
             var entity = ShortMetadataEntity(
                 videoUri = uri.toString(),
                 videoFileName = fileName,
                 createdAt = System.currentTimeMillis(),
-                status = ShortMetadataStatus.EXTRACTING_AUDIO
+                status = ShortMetadataStatus.EXTRACTING_AUDIO,
+                uploadTarget = uploadTarget
             )
             val id = dao.insert(entity)
             entity = entity.copy(id = id)
             activeProject = entity
-            isWorking = true
+            runGenerationFlow(entity, videoUriForGen = uri.toString(), manualTopic = null)
+        }
+    }
 
-            val result = ShortsMetadataGenerator.generate(
-                context = context,
-                videoUri = uri.toString(),
-                accounts = accounts,
-                language = outputLanguage,
-                onStatusChange = { statusText = it }
+    fun generateFromTopic() {
+        val topic = manualTopicText.trim()
+        if (topic.isBlank()) return
+        errorMessage = null
+        scope.launch {
+            var entity = ShortMetadataEntity(
+                videoUri = "",
+                videoFileName = topic.take(40),
+                createdAt = System.currentTimeMillis(),
+                status = ShortMetadataStatus.RESEARCHING_KEYWORDS
             )
-            isWorking = false
+            val id = dao.insert(entity)
+            entity = entity.copy(id = id)
+            activeProject = entity
+            runGenerationFlow(entity, videoUriForGen = null, manualTopic = topic)
+        }
+    }
 
-            result.onSuccess { meta ->
-                var updated = entity.copy(
-                    status = ShortMetadataStatus.DONE,
-                    transcript = meta.transcript,
-                    researchedKeywords = meta.researchedKeywords.joinToString(","),
-                    generatedTitle = meta.title,
-                    generatedDescription = meta.description,
-                    generatedTags = meta.tags,
-                    generatedHashtags = meta.hashtags
-                )
+    fun retry(entity: ShortMetadataEntity) {
+        errorMessage = null
+        scope.launch {
+            if (entity.generatedTitle != null) {
+                // Metadata already exists — only the upload step failed.
+                isWorking = true
+                statusText = "uploading"
+                var updated = entity.copy(status = ShortMetadataStatus.UPLOADING, errorMessage = null)
+                activeProject = updated
+                updated = uploadToYouTube(updated)
                 dao.update(updated)
                 activeProject = updated
-
-                if (autoUploadEnabled) {
-                    isWorking = true
-                    statusText = "uploading"
-                    updated = updated.copy(status = ShortMetadataStatus.UPLOADING)
-                    activeProject = updated
-                    updated = uploadToYouTube(updated)
-                    dao.update(updated)
-                    activeProject = updated
-                    isWorking = false
-                    if (updated.status == ShortMetadataStatus.ERROR) {
-                        errorMessage = updated.errorMessage
-                    }
-                }
-            }.onFailure { e ->
-                val updated = entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = e.message)
-                dao.update(updated)
-                activeProject = updated
-                errorMessage = e.message
+                isWorking = false
+                if (updated.status == ShortMetadataStatus.ERROR) errorMessage = updated.errorMessage
+            } else if (entity.videoUri.isNotBlank()) {
+                runGenerationFlow(entity, videoUriForGen = entity.videoUri, manualTopic = null)
+            } else {
+                // Topic-only entry — entity.transcript holds the originally typed topic.
+                runGenerationFlow(entity, videoUriForGen = null, manualTopic = entity.transcript)
             }
         }
     }
@@ -256,6 +323,49 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
 
         Spacer(modifier = Modifier.height(12.dp))
 
+        Text(
+            text = "Upload Shape",
+            color = TextSecondary,
+            fontSize = 11.sp,
+            modifier = Modifier.padding(horizontal = 16.dp)
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            listOf(
+                com.vellora.cut.autogen.data.UploadTarget.AUTO to "Auto (jaisi hai)",
+                com.vellora.cut.autogen.data.UploadTarget.SHORT to "Short",
+                com.vellora.cut.autogen.data.UploadTarget.LONG to "Long"
+            ).forEach { (value, label) ->
+                val selected = uploadTarget == value
+                Surface(
+                    onClick = { uploadTarget = value },
+                    shape = RoundedCornerShape(20.dp),
+                    color = if (selected) CyanPrimary else SurfaceVariant
+                ) {
+                    Text(
+                        text = label,
+                        color = if (selected) BackgroundDark else TextPrimary,
+                        fontSize = 12.sp,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                    )
+                }
+            }
+        }
+        if (uploadTarget != com.vellora.cut.autogen.data.UploadTarget.AUTO) {
+            Text(
+                text = "Agar zaroorat pari to real FFmpeg se video crop/trim ho kar upload hogi",
+                color = TextSecondary,
+                fontSize = 10.sp,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
         Button(
             onClick = { videoPicker.launch("video/*") },
             enabled = !isWorking,
@@ -265,6 +375,49 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
             colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
         ) {
             Text(text = "📁 Gallery se Video Chunein", color = BackgroundDark, fontWeight = FontWeight.Bold)
+        }
+
+        classificationHint?.let {
+            Text(
+                text = it,
+                color = CyanPrimary,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+        Text(
+            text = "Ya apna topic khud likhein (video ke bagair)",
+            color = TextSecondary,
+            fontSize = 11.sp,
+            modifier = Modifier.padding(horizontal = 16.dp)
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        OutlinedTextField(
+            value = manualTopicText,
+            onValueChange = { manualTopicText = it },
+            placeholder = { Text("jaise: 5 tips ghar par workout karne ke liye") },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            minLines = 2,
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = TextPrimary,
+                unfocusedTextColor = TextPrimary,
+                focusedBorderColor = CyanPrimary
+            )
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Button(
+            onClick = { generateFromTopic() },
+            enabled = !isWorking && manualTopicText.isNotBlank(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = SurfaceVariant)
+        ) {
+            Text(text = "✍️ Topic se Generate Karein", color = TextPrimary, fontWeight = FontWeight.Bold)
         }
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -290,11 +443,8 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
         }
 
         val shownProject = activeProject
-        if (shownProject != null && shownProject.status in setOf(
-                ShortMetadataStatus.DONE, ShortMetadataStatus.UPLOADING, ShortMetadataStatus.UPLOADED
-            )
-        ) {
-            ResultCard(shownProject)
+        if (shownProject != null) {
+            ResultCard(shownProject, onRetry = { retry(shownProject) })
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -328,7 +478,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun ResultCard(project: ShortMetadataEntity) {
+private fun ResultCard(project: ShortMetadataEntity, onRetry: () -> Unit) {
     val context = LocalContext.current
     Column(
         modifier = Modifier
@@ -340,6 +490,27 @@ private fun ResultCard(project: ShortMetadataEntity) {
             .heightIn(max = 320.dp)
             .verticalScroll(rememberScrollState())
     ) {
+        if (project.status == ShortMetadataStatus.ERROR) {
+            Text(text = "⚠ ${project.errorMessage ?: "Kuch ghalat ho gaya"}", color = Color(0xFFFF6B6B), fontSize = 12.sp)
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(
+                onClick = onRetry,
+                colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
+            ) {
+                Text(text = "🔁 Retry", color = BackgroundDark, fontWeight = FontWeight.Bold)
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+        }
+
+        if (project.generatedTitle == null) {
+            Text(
+                text = if (project.status == ShortMetadataStatus.ERROR) "Abhi tak koi metadata nahi bani." else "Kaam ho raha hai…",
+                color = TextSecondary,
+                fontSize = 12.sp
+            )
+            return@Column
+        }
+
         CopyableField(context, "Title", project.generatedTitle.orEmpty())
         Spacer(modifier = Modifier.height(10.dp))
         CopyableField(context, "Description", project.generatedDescription.orEmpty())
@@ -352,6 +523,14 @@ private fun ResultCard(project: ShortMetadataEntity) {
             Spacer(modifier = Modifier.height(12.dp))
             Text(text = "✅ YouTube پر upload ہو گئی", color = CyanPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             Text(text = project.youtubeVideoUrl, color = TextSecondary, fontSize = 12.sp)
+        } else if (project.videoUri.isNotBlank() && project.status == ShortMetadataStatus.DONE) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Button(
+                onClick = onRetry, // same path: uploadToYouTube runs since generatedTitle != null
+                colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
+            ) {
+                Text(text = "⬆️ Upload Now", color = BackgroundDark, fontWeight = FontWeight.Bold)
+            }
         }
     }
 }
@@ -385,6 +564,44 @@ private fun statusLabel(status: String): String = when (status) {
     ShortMetadataStatus.GENERATING -> "AI Title/Description/Tags bana raha hai…"
     ShortMetadataStatus.UPLOADING -> "YouTube par upload ho raha hai…"
     else -> "Kaam ho raha hai…"
+}
+
+/**
+ * YouTube decides Short vs regular video ENTIRELY automatically — vertical
+ * or square AND ≤3 minutes = Short; anything wider or longer = a regular
+ * video. There is no API flag to override this (confirmed against current
+ * YouTube Data API behaviour), so this only predicts/warns what will
+ * actually happen — it can't force either outcome.
+ */
+private fun predictYouTubeClassification(context: Context, uri: Uri): String? {
+    val retriever = android.media.MediaMetadataRetriever()
+    return try {
+        retriever.setDataSource(context, uri)
+        val widthRaw = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: return null
+        val heightRaw = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: return null
+        val rotation = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
+        val durationMs = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: return null
+
+        // Rotation metadata means the raw width/height are swapped relative
+        // to how the video actually displays — account for that first.
+        val (width, height) = if (rotation == 90 || rotation == 270) heightRaw to widthRaw else widthRaw to heightRaw
+        val isVerticalOrSquare = height >= width
+        val underThreeMin = durationMs <= 180_000L
+        val durationLabel = "%.0fs".format(durationMs / 1000.0)
+
+        when {
+            isVerticalOrSquare && underThreeMin ->
+                "📱 Ye video YouTube پر Short بنے گی (vertical/square + $durationLabel, 3min سے کم)"
+            !isVerticalOrSquare ->
+                "🎬 Ye video normal (Long) video بنے گی — wide/16:9 shape ہے، Short نہیں بن سکتی"
+            else ->
+                "🎬 Ye video normal (Long) video بنے گی — 3min سے لمبی ہے ($durationLabel)"
+        }
+    } catch (e: Exception) {
+        null
+    } finally {
+        try { retriever.release() } catch (e: Exception) { }
+    }
 }
 
 private fun resolveVideoToLocalFile(context: Context, uriString: String): File? {

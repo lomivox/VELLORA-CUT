@@ -261,16 +261,27 @@ object ShortMetadataStatus {
     const val ERROR = "error"
 }
 
+object UploadTarget {
+    /** No reshape — upload whatever shape/duration the source already is. */
+    const val AUTO = "auto"
+    const val SHORT = "short"
+    const val LONG = "long"
+}
+
 @Entity(tableName = "short_metadata_projects")
 data class ShortMetadataEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    /** content:// URI of the Gallery video this was generated for. */
+    /** content:// URI of the Gallery video this was generated for — blank
+     * for a manual-topic-only entry (metadata drafted from typed text,
+     * no video attached, so nothing to upload). */
     val videoUri: String,
     val videoFileName: String,
     val createdAt: Long,
     val status: String = ShortMetadataStatus.IDLE,
     val errorMessage: String? = null,
-    /** Real Whisper transcript of the video's audio track. */
+    /** Real Whisper transcript of the video's audio track — or, for a
+     * manual-topic entry, the person's own typed topic text used the same
+     * way (nothing here is ever a placeholder). */
     val transcript: String? = null,
     /** Real YouTube search-suggest keywords fetched for this video's topic
      * (comma-separated) — what the AI's Title/Tags were actually grounded in. */
@@ -282,5 +293,9 @@ data class ShortMetadataEntity(
     /** Space-separated #hashtags, ready to paste into the description. */
     val generatedHashtags: String? = null,
     /** Set once this video was actually uploaded to YouTube. */
-    val youtubeVideoUrl: String? = null
+    val youtubeVideoUrl: String? = null,
+    /** [UploadTarget] — whether upload should reshape the video to Short
+     * (vertical, <3min) or Long (widescreen) before sending it, or leave
+     * it exactly as picked. */
+    val uploadTarget: String = UploadTarget.AUTO
 )

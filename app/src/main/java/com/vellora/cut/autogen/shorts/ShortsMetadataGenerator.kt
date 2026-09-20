@@ -38,7 +38,8 @@ object ShortsMetadataGenerator {
 
     suspend fun generate(
         context: Context,
-        videoUri: String,
+        videoUri: String?,
+        manualTopic: String? = null,
         accounts: List<CloudflareAccount>,
         language: String,
         onStatusChange: (String) -> Unit
@@ -49,39 +50,50 @@ object ShortsMetadataGenerator {
             )
         }
 
-        // ---- Step 1: extract audio ----
-        onStatusChange("extracting_audio")
-        val audioFile: File = VideoAudioExtractor.extract(context, videoUri)
-            ?: return@withContext Result.failure(Exception("Video se audio nahi nikal saka"))
+        val transcript: String
+        if (videoUri != null) {
+            // ---- Step 1: extract audio ----
+            onStatusChange("extracting_audio")
+            val audioFile: File = VideoAudioExtractor.extract(context, videoUri)
+                ?: return@withContext Result.failure(Exception("Video se audio nahi nikal saka"))
 
-        // ---- Step 2: transcribe (real Whisper, pooled accounts) ----
-        onStatusChange("transcribing")
-        val client = CloudflareAiClient()
-        val audioBytes = try {
-            audioFile.readBytes()
-        } catch (e: Exception) {
-            return@withContext Result.failure(Exception("Extracted audio parhi nahi ja saki: ${e.message}"))
-        }
-
-        var transcript: String? = null
-        var lastError: String? = null
-        for (account in accounts) {
-            try {
-                val segments = client.transcribeAudio(audioBytes, account.accountId, account.apiToken)
-                transcript = segments.joinToString(" ") { it.text }
-                break
-            } catch (e: CloudflareApiException) {
-                lastError = e.message
-                if (e.isQuotaExceeded) continue
-                break
+            // ---- Step 2: transcribe (real Whisper, pooled accounts) ----
+            onStatusChange("transcribing")
+            val client = CloudflareAiClient()
+            val audioBytes = try {
+                audioFile.readBytes()
             } catch (e: Exception) {
-                lastError = e.message ?: "Unknown error"
-                break
+                return@withContext Result.failure(Exception("Extracted audio parhi nahi ja saki: ${e.message}"))
             }
+
+            var transcribed: String? = null
+            var lastError: String? = null
+            for (account in accounts) {
+                try {
+                    val segments = client.transcribeAudio(audioBytes, account.accountId, account.apiToken)
+                    transcribed = segments.joinToString(" ") { it.text }
+                    break
+                } catch (e: CloudflareApiException) {
+                    lastError = e.message
+                    if (e.isQuotaExceeded) continue
+                    break
+                } catch (e: Exception) {
+                    lastError = e.message ?: "Unknown error"
+                    break
+                }
+            }
+            if (transcribed.isNullOrBlank()) {
+                return@withContext Result.failure(Exception(lastError ?: "Transcription fail hui — video mein awaz nahi mili?"))
+            }
+            transcript = transcribed
+        } else if (!manualTopic.isNullOrBlank()) {
+            // Person typed their own topic — skip audio/transcription
+            // entirely and use it exactly like a transcript from here on.
+            transcript = manualTopic
+        } else {
+            return@withContext Result.failure(Exception("Video ya topic mein se koi ek dein"))
         }
-        if (transcript.isNullOrBlank()) {
-            return@withContext Result.failure(Exception(lastError ?: "Transcription fail hui — video mein awaz nahi mili?"))
-        }
+        val client = CloudflareAiClient()
 
         // ---- Step 3: real keyword research ----
         onStatusChange("researching_keywords")
@@ -121,7 +133,7 @@ object ShortsMetadataGenerator {
         onStatusChange("generating")
         val prompt = buildPrompt(transcript, keywords, competitorTitles, language)
         var rawResponse: String? = null
-        lastError = null
+        var lastError: String? = null
         for (account in accounts) {
             try {
                 rawResponse = client.generateText(prompt, account.accountId, account.apiToken)

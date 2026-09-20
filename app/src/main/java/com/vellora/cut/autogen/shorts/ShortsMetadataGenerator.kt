@@ -57,35 +57,20 @@ object ShortsMetadataGenerator {
             val audioFile: File = VideoAudioExtractor.extract(context, videoUri)
                 ?: return@withContext Result.failure(Exception("Video se audio nahi nikal saka"))
 
-            // ---- Step 2: transcribe (real Whisper, pooled accounts) ----
+            // ---- Step 2: transcribe (chunked — see WhisperChunkedTranscriber's
+            // doc comment for why: a whole multi-minute file in one Whisper
+            // request silently returns only the opening portion) ----
             onStatusChange("transcribing")
-            val client = CloudflareAiClient()
-            val audioBytes = try {
-                audioFile.readBytes()
-            } catch (e: Exception) {
-                return@withContext Result.failure(Exception("Extracted audio parhi nahi ja saki: ${e.message}"))
+            val transcribeResult = com.vellora.cut.autogen.captions.WhisperChunkedTranscriber.transcribe(
+                context, audioFile, accounts
+            )
+            val segments = transcribeResult.getOrElse { e ->
+                return@withContext Result.failure(Exception(e.message ?: "Transcription fail hui — video mein awaz nahi mili?"))
             }
-
-            var transcribed: String? = null
-            var lastError: String? = null
-            for (account in accounts) {
-                try {
-                    val segments = client.transcribeAudio(audioBytes, account.accountId, account.apiToken)
-                    transcribed = segments.joinToString(" ") { it.text }
-                    break
-                } catch (e: CloudflareApiException) {
-                    lastError = e.message
-                    if (e.isQuotaExceeded) continue
-                    break
-                } catch (e: Exception) {
-                    lastError = e.message ?: "Unknown error"
-                    break
-                }
+            transcript = segments.sortedBy { it.startMs }.joinToString(" ") { it.text }
+            if (transcript.isBlank()) {
+                return@withContext Result.failure(Exception("Transcription khaali aayi — video mein awaz nahi mili?"))
             }
-            if (transcribed.isNullOrBlank()) {
-                return@withContext Result.failure(Exception(lastError ?: "Transcription fail hui — video mein awaz nahi mili?"))
-            }
-            transcript = transcribed
         } else if (!manualTopic.isNullOrBlank()) {
             // Person typed their own topic — skip audio/transcription
             // entirely and use it exactly like a transcript from here on.
@@ -194,7 +179,7 @@ object ShortsMetadataGenerator {
             $competitorBlock
 
             Transcript:
-            "${transcript.take(2000)}"
+            "${transcript.take(6000)}"
 
             Reply in EXACTLY this format, nothing else, no extra commentary:
             TITLE: <a punchy, clickable, SEO-friendly title, under 70 characters>

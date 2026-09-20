@@ -4,17 +4,17 @@ import android.content.Context
 import android.net.Uri
 import com.vellora.cut.autogen.data.CaptionSegment
 import com.vellora.cut.autogen.data.CloudflareAccount
-import com.vellora.cut.autogen.network.CloudflareAiClient
-import com.vellora.cut.autogen.network.CloudflareApiException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileOutputStream
 
 /**
  * Transcribes the project's voice-over into real, timestamped captions via
- * Cloudflare's Whisper model — reusing the exact same pooled-account
- * fallback [GenerateImagesWorker] uses for images: try each saved account
- * in order, skip ones that report today's quota is used up.
+ * Cloudflare's Whisper model. Delegates to [WhisperChunkedTranscriber],
+ * which splits long audio into chunks first — sending a whole multi-minute
+ * file in one request silently only transcribes the first portion instead
+ * of failing loudly, which chunking fixes.
  */
 object CaptionGenerator {
 
@@ -30,39 +30,27 @@ object CaptionGenerator {
             )
         }
 
-        val audioBytes = try {
-            resolveAudioBytes(context, processedAudioPath ?: voiceOverUri)
+        val audioFile = try {
+            resolveAudioFile(context, processedAudioPath ?: voiceOverUri)
         } catch (e: Exception) {
             return@withContext Result.failure(Exception("Voice-over file open nahi ho saka: ${e.message}"))
         }
 
-        val client = CloudflareAiClient()
-        var lastError: String? = null
-
-        for (account in accounts) {
-            try {
-                val segments = client.transcribeAudio(audioBytes, account.accountId, account.apiToken)
-                return@withContext Result.success(segments)
-            } catch (e: CloudflareApiException) {
-                lastError = e.message
-                if (e.isQuotaExceeded) continue // try the next pooled account
-                break // a real error — no point burning through every account for it
-            } catch (e: Exception) {
-                lastError = e.message ?: "Unknown error"
-                break
-            }
-        }
-
-        Result.failure(Exception(lastError ?: "Transcription fail hui"))
+        WhisperChunkedTranscriber.transcribe(context, audioFile, accounts)
     }
 
-    private fun resolveAudioBytes(context: Context, pathOrUri: String): ByteArray {
+    private fun resolveAudioFile(context: Context, pathOrUri: String): File {
         val uri = Uri.parse(pathOrUri)
         return if (uri.scheme == null || uri.scheme == "file") {
-            File(uri.path ?: pathOrUri).readBytes()
+            File(uri.path ?: pathOrUri)
         } else {
-            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                ?: throw IllegalStateException("Audio URI khol nahi saka")
+            val dir = File(context.cacheDir, "caption_audio").apply { mkdirs() }
+            val dest = File(dir, "source_${System.currentTimeMillis()}")
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                FileOutputStream(dest).use { output -> input.copyTo(output) }
+            } ?: throw IllegalStateException("Audio URI khol nahi saka")
+            dest
         }
     }
 }
+

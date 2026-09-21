@@ -178,14 +178,28 @@ object ShortsMetadataGenerator {
             val words = kw.split(Regex("\\s+"))
 
             val looksLikeNamedPerson = words.firstOrNull() in namePrefixes
-            val isCountryOrRegion = kw in commonCountriesAndRegions || words.any { it in commonCountriesAndRegions }
+            // The SPECIFIC country/region word(s) inside this keyword — not
+            // the whole phrase. e.g. for "screen time india" this is just
+            // ["india"], not ["screen","time","india"].
+            val matchedCountryWords = words.filter { it in commonCountriesAndRegions }
 
-            if (!looksLikeNamedPerson && !isCountryOrRegion) return@filter true // ordinary topical keyword — keep
+            if (!looksLikeNamedPerson && matchedCountryWords.isEmpty()) return@filter true // ordinary topical keyword — keep
 
-            // Named-person or country/region keyword: only keep if it (or
-            // its core words) genuinely shows up in OUR OWN transcript.
-            val coreWords = words.filter { it !in namePrefixes && it.length > 2 }
-            coreWords.isNotEmpty() && coreWords.any { it in transcriptWords }
+            // Named-person keyword: keep only if a real name word (not the
+            // title, not generic filler) genuinely shows up in OUR transcript.
+            if (looksLikeNamedPerson) {
+                val nameWords = words.filter { it !in namePrefixes && it.length > 2 }
+                if (nameWords.isNotEmpty() && nameWords.any { it in transcriptWords }) return@filter true
+            }
+
+            // Country/region keyword: keep only if that SPECIFIC country word
+            // itself is in our transcript — checking any other word in the
+            // phrase (like "screen"/"time") is exactly the bug that let
+            // "screen time india" slip through when the video just happened
+            // to also say "screen" and "time" naturally.
+            if (matchedCountryWords.isNotEmpty() && matchedCountryWords.any { it in transcriptWords }) return@filter true
+
+            false
         }
     }
 
@@ -209,11 +223,18 @@ object ShortsMetadataGenerator {
         val languageInstruction = if (language.equals("English", ignoreCase = true)) {
             "Write the Title, Description, Tags and Hashtags in English."
         } else {
-            "Write the Title, Description, Tags and Hashtags in Urdu (اردو), using Urdu script — not Roman Urdu."
+            "Write the Title, Description, Tags and Hashtags in natural, fluent, GRAMMATICALLY CORRECT " +
+                "Urdu (اردو), using proper Urdu script — never Roman Urdu, never English words unless there " +
+                "is no natural Urdu equivalent (e.g. a proper noun). Write the way a professional Urdu " +
+                "YouTuber actually talks to their audience — natural spoken-register Urdu, not a stiff " +
+                "word-for-word translation from English. Read your own Urdu output back before finishing " +
+                "and fix anything that sounds unnatural or grammatically awkward."
         }
 
         return """
-            You are a YouTube SEO expert. Based on the video transcript below, write metadata for this video.
+            You are a professional YouTube SEO strategist who writes complete, publish-ready metadata that
+            actually ranks — not a rough draft. Based on the video transcript below, write full metadata
+            for this video, matching the depth and polish of a top-performing channel's uploads.
             $languageInstruction
             $keywordsBlock
             $competitorBlock
@@ -227,11 +248,30 @@ object ShortsMetadataGenerator {
             Transcript:
             "${transcript.take(6000)}"
 
-            Reply in EXACTLY this format, nothing else, no extra commentary:
-            TITLE: <a punchy, clickable, SEO-friendly title, under 70 characters>
-            DESCRIPTION: <a 2-3 sentence description that naturally includes relevant keywords>
-            TAGS: <12-15 comma-separated tags, no # symbol>
-            HASHTAGS: <6-10 space-separated #hashtags>
+            Write each field to this exact standard — a thin, one-line answer is a FAILED response:
+
+            TITLE — under 70 characters, punchy and clickable, leads with the primary keyword, creates
+            curiosity or urgency without being clickbait-fake to the actual content.
+
+            DESCRIPTION — a full, complete, professional YouTube description, 150-300 words across
+            SEVERAL SHORT PARAGRAPHS (never a single line or a single sentence):
+              1. Opening hook (1-2 sentences) that restates the core promise/topic and naturally includes
+                 the primary keyword in the first 25 words (this is what shows before "Show more").
+              2. A body paragraph (2-4 sentences) that expands on what the video actually covers, naturally
+                 weaving in 3-5 of the researched keywords/phrases without keyword-stuffing.
+              3. A short call-to-action paragraph (1-2 sentences) inviting the viewer to like/comment/
+                 subscribe/share, phrased naturally for this topic and language.
+
+            TAGS — 12-15 comma-separated tags, no # symbol, ordered from most to least important, mixing
+            short broad tags (2-3 words) with longer specific long-tail phrases (4-6 words).
+
+            HASHTAGS — 6-10 space-separated #hashtags, no spaces inside a tag, mixing broad and specific.
+
+            Reply in EXACTLY this format, nothing else, no extra commentary, no markdown, no asterisks:
+            TITLE: <title>
+            DESCRIPTION: <the full multi-paragraph description>
+            TAGS: <tags>
+            HASHTAGS: <hashtags>
         """.trimIndent()
     }
 

@@ -164,7 +164,7 @@ class CloudflareAiClient {
         accountId: String,
         apiToken: String
     ): String {
-        val model = "@cf/meta/llama-3.1-8b-instruct"
+        val model = "@cf/qwen/qwen3.8-27b"
         val url = "https://api.cloudflare.com/client/v4/accounts/$accountId/ai/run/$model"
 
         val messages = org.json.JSONArray().put(
@@ -179,8 +179,11 @@ class CloudflareAiClient {
             // in their own April 2025 changelog) — nowhere near enough for a
             // full Title+Description+Tags+Hashtags reply, so the response was
             // silently cut off after the title (or partway through the
-            // description) with Tags/Hashtags missing entirely.
-            put("max_tokens", 1200)
+            // description) with Tags/Hashtags missing entirely. Bumped from
+            // 1200 to 2600 for qwen3.8-27b: a real 150-300 word professional
+            // description alone needs ~300-450 tokens, and this model can
+            // also emit reasoning/thinking tokens before its actual answer.
+            put("max_tokens", 2600)
         }.toString().toRequestBody("application/json".toMediaType())
 
         val request = Request.Builder()

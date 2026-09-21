@@ -84,6 +84,13 @@ class SecureCredentialStore(context: Context) {
         get() = prefs.getString(KEY_YOUTUBE_API_KEY, "") ?: ""
         set(value) = prefs.edit().putString(KEY_YOUTUBE_API_KEY, value).apply()
 
+    /** Your channel's name — set once here, woven naturally into every
+     * generated description's call-to-action line (e.g. "Subscribe to
+     * <name> for more"). Blank means the CTA stays generic. */
+    var channelName: String
+        get() = prefs.getString(KEY_CHANNEL_NAME, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_CHANNEL_NAME, value).apply()
+
     /** Default for the auto-upload toggle shown in Shorts Metadata — off
      * by default so nothing goes to YouTube without an explicit choice. */
     var autoUploadEnabled: Boolean
@@ -98,6 +105,7 @@ class SecureCredentialStore(context: Context) {
         private const val KEY_LEGACY_API_TOKEN = "cf_api_token"
         private const val KEY_MODEL = "cf_image_model"
         private const val KEY_YOUTUBE_API_KEY = "youtube_data_api_key"
+        private const val KEY_CHANNEL_NAME = "channel_name"
         private const val KEY_AUTO_UPLOAD = "youtube_auto_upload_enabled"
         const val DEFAULT_MODEL = "@cf/black-forest-labs/flux-1-schnell"
     }

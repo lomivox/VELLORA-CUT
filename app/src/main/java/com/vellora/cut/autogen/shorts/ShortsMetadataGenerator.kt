@@ -116,7 +116,8 @@ object ShortsMetadataGenerator {
 
         // ---- Step 4: AI generation grounded in transcript + real keywords ----
         onStatusChange("generating")
-        val prompt = buildPrompt(transcript, keywords, competitorTitles, language)
+        val channelName = SecureCredentialStore(context).channelName
+        val prompt = buildPrompt(transcript, keywords, competitorTitles, language, channelName)
         var rawResponse: String? = null
         var lastError: String? = null
         for (account in accounts) {
@@ -137,16 +138,32 @@ object ShortsMetadataGenerator {
         }
 
         val parsed = parseResponse(rawResponse)
+        val descriptionWithHashtags = appendTopHashtagsToDescription(parsed.second, parsed.fourth)
         Result.success(
             ShortsMetadataResult(
                 transcript = transcript,
                 researchedKeywords = keywords,
                 title = parsed.first,
-                description = parsed.second,
+                description = descriptionWithHashtags,
                 tags = parsed.third,
                 hashtags = parsed.fourth
             )
         )
+    }
+
+    /**
+     * Real YouTube behavior: the first 3 hashtags found in a video's
+     * DESCRIPTION (not the separate hashtags field alone) become clickable
+     * above the title. Appending them here guarantees that happens instead
+     * of relying on the model to remember to do it inside the description
+     * text itself.
+     */
+    private fun appendTopHashtagsToDescription(description: String, hashtags: String): String {
+        val topTags = hashtags.split(Regex("\\s+"))
+            .filter { it.startsWith("#") && it.length > 1 }
+            .take(3)
+        if (topTags.isEmpty() || description.isBlank()) return description
+        return description.trimEnd() + "\n\n" + topTags.joinToString(" ")
     }
 
     /**
@@ -207,7 +224,8 @@ object ShortsMetadataGenerator {
         transcript: String,
         keywords: List<String>,
         competitorTitles: List<String>,
-        language: String
+        language: String,
+        channelName: String
     ): String {
         val keywordsBlock = if (keywords.isNotEmpty()) {
             "Real keywords/tags pooled from currently top-ranking YouTube videos on this exact topic " +
@@ -230,6 +248,12 @@ object ShortsMetadataGenerator {
                 "word-for-word translation from English. Read your own Urdu output back before finishing " +
                 "and fix anything that sounds unnatural or grammatically awkward."
         }
+
+        val channelInstruction = if (channelName.isNotBlank()) {
+            " Naturally weave in a mention of the channel name \"$channelName\" here " +
+                "(e.g. \"Subscribe to $channelName for more\") — phrase it naturally in " +
+                "whichever language is being used, don't just paste it awkwardly."
+        } else ""
 
         return """
             You are a professional YouTube SEO strategist who writes complete, publish-ready metadata that
@@ -260,7 +284,7 @@ object ShortsMetadataGenerator {
               2. A body paragraph (2-4 sentences) that expands on what the video actually covers, naturally
                  weaving in 3-5 of the researched keywords/phrases without keyword-stuffing.
               3. A short call-to-action paragraph (1-2 sentences) inviting the viewer to like/comment/
-                 subscribe/share, phrased naturally for this topic and language.
+                 subscribe/share, phrased naturally for this topic and language.$channelInstruction
 
             TAGS — 12-15 comma-separated tags, no # symbol, ordered from most to least important, mixing
             short broad tags (2-3 words) with longer specific long-tail phrases (4-6 words).

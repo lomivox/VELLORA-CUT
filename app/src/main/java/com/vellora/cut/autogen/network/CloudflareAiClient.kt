@@ -171,7 +171,7 @@ class CloudflareAiClient {
         accountId: String,
         apiToken: String
     ): String {
-        val model = "@cf/meta/llama-3.1-8b-instruct"
+        val model = "@cf/qwen/qwen3.8-27b"
         val url = "https://api.cloudflare.com/client/v4/accounts/$accountId/ai/run/$model"
 
         val messages = org.json.JSONArray().put(
@@ -187,7 +187,7 @@ class CloudflareAiClient {
             // full Title+Description+Tags+Hashtags reply, so the response was
             // silently cut off after the title (or partway through the
             // description) with Tags/Hashtags missing entirely.
-            put("max_tokens", 1200)
+            put("max_tokens", 2600)
         }.toString().toRequestBody("application/json".toMediaType())
 
         val request = Request.Builder()

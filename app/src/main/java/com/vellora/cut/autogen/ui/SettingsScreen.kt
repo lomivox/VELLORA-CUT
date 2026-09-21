@@ -62,6 +62,8 @@ fun SettingsScreen(onBack: () -> Unit) {
     var accountsSavedMessage by remember { mutableStateOf<String?>(null) }
     var youtubeSavedMessage by remember { mutableStateOf<String?>(null) }
     var youtubeApiKey by remember { mutableStateOf(store.youtubeApiKey) }
+    var channelName by remember { mutableStateOf(store.channelName) }
+    var channelSavedMessage by remember { mutableStateOf<String?>(null) }
 
     var signedInAccountEmail by remember {
         mutableStateOf(YouTubeAuthManager.getCurrentAccount(context)?.email)
@@ -182,6 +184,43 @@ fun SettingsScreen(onBack: () -> Unit) {
                     Text(text = "Save YouTube Key", color = BackgroundDark, fontWeight = FontWeight.Bold)
                 }
                 youtubeSavedMessage?.let {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = "✅ ", fontSize = 13.sp)
+                        Text(text = it, color = TextSecondary, fontSize = 13.sp)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(28.dp))
+                Text(text = "Channel Name", color = CyanPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Shorts Metadata tool ہر description کے آخر میں اسی نام سے \"Subscribe to <name>\" " +
+                        "جیسی line خود شامل کرے گا — ایک دفعہ یہاں لکھیں، ہر video پر لگے گا۔",
+                    color = TextSecondary,
+                    fontSize = 12.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = channelName,
+                    onValueChange = { channelName = it; channelSavedMessage = null },
+                    label = { Text("Channel Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = fieldColors()
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Button(
+                    onClick = {
+                        store.channelName = channelName
+                        channelSavedMessage = "Channel Name محفوظ ہو گیا"
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
+                ) {
+                    Text(text = "Save Channel Name", color = BackgroundDark, fontWeight = FontWeight.Bold)
+                }
+                channelSavedMessage?.let {
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(text = "✅ ", fontSize = 13.sp)

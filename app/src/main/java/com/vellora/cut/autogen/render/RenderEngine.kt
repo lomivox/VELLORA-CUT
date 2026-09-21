@@ -96,6 +96,7 @@ object RenderEngine {
                 context, timeline, voiceOverFile, width, height,
                 project.transitionType, project.motionEffect,
                 if (project.captionsEnabled) CaptionSegments.fromJson(project.captionsJson) else emptyList(),
+                project.captionsFont,
                 outputFile
             )
         } catch (e: Exception) {
@@ -145,6 +146,7 @@ object RenderEngine {
         transitionType: String,
         motionEffect: String,
         captions: List<CaptionSegment>,
+        captionsFont: String,
         outputFile: File
     ): Array<String> {
         val n = timeline.size
@@ -172,7 +174,7 @@ object RenderEngine {
         }
 
         val filterComplex = buildFilterComplex(
-            context, n, inputLengths, durationsSec, width, height, transitionType, motionEffect, captions
+            context, n, inputLengths, durationsSec, width, height, transitionType, motionEffect, captions, captionsFont
         )
 
         args += listOf("-filter_complex", filterComplex.script, "-map", "[${filterComplex.finalVideoLabel}]")
@@ -201,7 +203,8 @@ object RenderEngine {
         height: Int,
         transitionType: String,
         motionEffect: String,
-        captions: List<CaptionSegment>
+        captions: List<CaptionSegment>,
+        captionsFont: String
     ): FilterComplexResult {
         val parts = mutableListOf<String>()
 
@@ -250,7 +253,7 @@ object RenderEngine {
         // needs a real .ttf file path (FFmpeg can't use Android's font
         // resources directly) — see findSystemFont's doc comment.
         if (captions.isNotEmpty()) {
-            val fontPath = findSystemFont()
+            val fontPath = resolveFontFile(context, captionsFont)
             if (fontPath != null) {
                 val captionLabel = "captioned"
                 val drawtextFilters = captions.joinToString(",") { seg ->
@@ -396,6 +399,38 @@ object RenderEngine {
      * captions are skipped for that render rather than failing it outright
      * (see the call site in buildFilterComplex).
      */
+    /**
+     * Tries the person's chosen font first (see [CaptionFonts]) — a real
+     * .ttf placed by them under app/src/main/assets/ at the path
+     * [CaptionFonts.assetPath] returns, copied once into a real filesystem
+     * path since drawtext can't read straight out of the APK's assets.
+     * Falls back to a system font if that asset isn't there (font choice
+     * left at System Default, or the .ttf hasn't been added yet).
+     */
+    private fun resolveFontFile(context: Context, fontId: String): String? {
+        // User-imported font (via the in-app "+ Import" button) — real file
+        // already sitting in app-private storage, use it as-is.
+        com.vellora.cut.autogen.data.CaptionFonts.importedFile(context, fontId)?.let { return it.absolutePath }
+
+        val assetPath = com.vellora.cut.autogen.data.CaptionFonts.assetPath(fontId)
+        if (assetPath != null) {
+            try {
+                val cacheFile = File(context.cacheDir, "caption_font_${fontId.replace(Regex("[^a-zA-Z0-9_]"), "_")}.ttf")
+                if (!cacheFile.exists()) {
+                    context.assets.open(assetPath).use { input ->
+                        java.io.FileOutputStream(cacheFile).use { output -> input.copyTo(output) }
+                    }
+                }
+                if (cacheFile.exists() && cacheFile.length() > 0) return cacheFile.absolutePath
+            } catch (e: Exception) {
+                // Asset not bundled yet (the .ttf hasn't actually been added
+                // under app/src/main/assets/fonts/) — fall through to a
+                // system font below rather than failing the whole render.
+            }
+        }
+        return findSystemFont()
+    }
+
     private fun findSystemFont(): String? {
         val candidates = listOf(
             "/system/fonts/Roboto-Regular.ttf",

@@ -1,7 +1,9 @@
 package com.vellora.cut.autogen.data
 
+import android.content.Context
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import java.io.File
 
 /** Status values used by [AutoGenProjectEntity.status]. */
 object AutoGenProjectStatus {
@@ -54,8 +56,100 @@ data class AutoGenProjectEntity(
     /** Whether captions are burned into the final render / shown live in
      * Preview. Generating captions does NOT turn this on automatically —
      * the person reviews the transcription first, then enables it. */
-    val captionsEnabled: Boolean = false
+    val captionsEnabled: Boolean = false,
+    /** Whisper language code for caption transcription — "ur" (Urdu,
+     * Nastaliq/Arabic script) or "hi" (Hindi, Devanagari script). Whisper
+     * often defaults to Hindi script for Urdu speech since the two
+     * languages sound almost identical, so this must be explicit. */
+    val captionsLanguage: String = "ur",
+    /** Font family name used to render/burn in captions — see CaptionFonts. */
+    val captionsFont: String = CaptionFonts.DEFAULT
 )
+
+/** Caption font choices. [assetPath] is where the actual .ttf must be
+ * placed for it to really be used — see CaptionFonts' KDoc for exactly
+ * where and how to add one; anything missing falls back to the system
+ * default font rather than crashing. */
+object CaptionFonts {
+    const val SYSTEM_DEFAULT = "system_default"
+    const val JAMEEL_NOORI_NASTALEEQ = "jameel_noori_nastaleeq"
+    const val NOTO_NASTALIQ_URDU = "noto_nastaliq_urdu"
+    const val ROBOTO = "roboto"
+    const val POPPINS = "poppins"
+    const val DEFAULT = SYSTEM_DEFAULT
+
+    /** (id, display label, is this an Urdu/Nastaliq-script font) */
+    val ALL = listOf(
+        Triple(SYSTEM_DEFAULT, "System Default", false),
+        Triple(JAMEEL_NOORI_NASTALEEQ, "Jameel Noori Nastaleeq", true),
+        Triple(NOTO_NASTALIQ_URDU, "Noto Nastaliq Urdu", true),
+        Triple(ROBOTO, "Roboto", false),
+        Triple(POPPINS, "Poppins", false)
+    )
+
+    fun label(id: String): String = ALL.firstOrNull { it.first == id }?.second ?: id
+
+    /** Path under app/src/main/assets/ where this font's real .ttf file
+     * must be placed — null for SYSTEM_DEFAULT, which needs no file. */
+    fun assetPath(id: String): String? = when (id) {
+        JAMEEL_NOORI_NASTALEEQ -> "fonts/JameelNooriNastaleeq.ttf"
+        NOTO_NASTALIQ_URDU -> "fonts/NotoNastaliqUrdu-Regular.ttf"
+        ROBOTO -> "fonts/Roboto-Regular.ttf"
+        POPPINS -> "fonts/Poppins-Regular.ttf"
+        else -> null
+    }
+
+    // ---- user-imported fonts (CapCut-style "Import Font" button) ----------
+    // Bundled fonts (above) need a rebuild+reinstall to add. Imported fonts
+    // are picked by the user at runtime (a .ttf/.otf, or a .zip containing
+    // one) and saved into app-private storage, so no rebuild is needed and
+    // they survive app updates (cleared only on uninstall / clear-data).
+
+    private const val IMPORTED_PREFIX = "imported:"
+
+    /** Folder where imported font files live; created on first use. */
+    fun importedFontsDir(context: Context): File =
+        File(context.filesDir, "fonts/imported").apply { mkdirs() }
+
+    fun isImported(id: String): Boolean = id.startsWith(IMPORTED_PREFIX)
+
+    /** The real file for an imported font id, or null if id isn't one / file is gone. */
+    fun importedFile(context: Context, id: String): File? {
+        if (!isImported(id)) return null
+        val file = File(importedFontsDir(context), id.removePrefix(IMPORTED_PREFIX))
+        return if (file.exists() && file.length() > 0) file else null
+    }
+
+    /** All fonts currently importable-and-present, as (id, label, isUrduGuess) —
+     * same Triple shape as [ALL] so UI can just concatenate the two lists. */
+    fun listImported(context: Context): List<Triple<String, String, Boolean>> =
+        importedFontsDir(context)
+            .listFiles { f -> f.isFile && f.extension.lowercase() in listOf("ttf", "otf") }
+            ?.sortedBy { it.name.lowercase() }
+            ?.map { f ->
+                val label = f.nameWithoutExtension
+                // Rough heuristic only, purely for the (unused-here) isUrdu
+                // flag's sake — real script comes from whatever the person
+                // actually imported, this never blocks anything.
+                val looksUrdu = label.contains("urdu", ignoreCase = true) ||
+                    label.contains("nastaliq", ignoreCase = true) ||
+                    label.contains("nastaleeq", ignoreCase = true)
+                Triple(IMPORTED_PREFIX + f.name, label, looksUrdu)
+            }
+            ?: emptyList()
+
+    /** Every font the person can currently pick: built-in + imported. */
+    fun allAvailable(context: Context): List<Triple<String, String, Boolean>> =
+        ALL + listImported(context)
+
+    fun label(context: Context, id: String): String =
+        allAvailable(context).firstOrNull { it.first == id }?.second ?: label(id)
+
+    fun deleteImported(context: Context, id: String): Boolean {
+        val file = importedFile(context, id) ?: return false
+        return file.delete()
+    }
+}
 
 /** One real Whisper-transcribed line, with its exact spoken timing. */
 data class CaptionSegment(

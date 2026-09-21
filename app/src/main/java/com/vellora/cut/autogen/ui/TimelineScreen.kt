@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
 import android.net.Uri
+import android.provider.OpenableColumns
 import android.widget.MediaController
 import android.widget.VideoView
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -120,6 +121,7 @@ fun TimelineScreen(
     var showMotionSheet by remember { mutableStateOf(false) }
     var audioProcessing by remember { mutableStateOf(false) }
     var showCaptionsSheet by remember { mutableStateOf(false) }
+    var showAudioSourceSheet by remember { mutableStateOf(false) }
     var captionsGenerating by remember { mutableStateOf(false) }
     var captionsError by remember { mutableStateOf<String?>(null) }
     var pendingGallerySaveFile by remember { mutableStateOf<File?>(null) }
@@ -204,6 +206,45 @@ fun TimelineScreen(
                 val updated = proj.copy(voiceOverUri = uri.toString(), voiceOverDurationMs = durationMs)
                 dao.updateProject(updated)
                 project = updated
+            }
+        }
+    }
+
+    // "Extract audio from a video" — same end result as audioLauncher (sets
+    // voiceOverUri + voiceOverDurationMs) but the source is a picked VIDEO,
+    // whose audio track real FFmpeg pulls out first (see VideoAudioExtractor).
+    var audioExtractInProgress by remember { mutableStateOf(false) }
+    val videoForAudioLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        val proj = project
+        if (uri != null && proj != null) {
+            try {
+                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            } catch (e: SecurityException) { /* fine for this session even if not persistable */ }
+
+            scope.launch {
+                audioExtractInProgress = true
+                val extractedFile = com.vellora.cut.autogen.render.VideoAudioExtractor.extract(context, uri.toString())
+                audioExtractInProgress = false
+                if (extractedFile != null) {
+                    val durationMs = try {
+                        val retriever = MediaMetadataRetriever()
+                        try {
+                            retriever.setDataSource(extractedFile.absolutePath)
+                            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                                ?.toLongOrNull() ?: 0L
+                        } finally {
+                            retriever.release()
+                        }
+                    } catch (e: Exception) { 0L }
+                    val updated = proj.copy(
+                        voiceOverUri = Uri.fromFile(extractedFile).toString(),
+                        voiceOverDurationMs = durationMs
+                    )
+                    dao.updateProject(updated)
+                    project = updated
+                }
             }
         }
     }
@@ -392,7 +433,7 @@ fun TimelineScreen(
                     actions = listOf(
                         ToolbarAction(R.drawable.ic_trim, "Split") { },
                         ToolbarAction(R.drawable.ic_text, "Captions") { showCaptionsSheet = true },
-                        ToolbarAction(R.drawable.ic_audio, "Audio") { audioLauncher.launch("audio/*") },
+                        ToolbarAction(R.drawable.ic_audio, "Audio") { showAudioSourceSheet = true },
                         ToolbarAction(R.drawable.ic_volume, "Volume") { showVolumeSheet = true },
                         ToolbarAction(R.drawable.ic_noise, "Noise") { showNoiseSheet = true },
                         ToolbarAction(R.drawable.ic_speed, "Speed") { },
@@ -647,7 +688,8 @@ fun TimelineScreen(
                                 context = context,
                                 voiceOverUri = voiceOverUri,
                                 processedAudioPath = proj.processedAudioPath,
-                                accounts = accounts
+                                accounts = accounts,
+                                language = proj.captionsLanguage
                             )
                             captionsGenerating = false
                             result.onSuccess { segments ->
@@ -668,8 +710,60 @@ fun TimelineScreen(
                             dao.updateProject(updated)
                             project = updated
                         }
+                    },
+                    onLanguageChange = { lang ->
+                        scope.launch {
+                            val updated = proj.copy(captionsLanguage = lang)
+                            dao.updateProject(updated)
+                            project = updated
+                        }
+                    },
+                    onFontChange = { font ->
+                        scope.launch {
+                            val updated = proj.copy(captionsFont = font)
+                            dao.updateProject(updated)
+                            project = updated
+                        }
                     }
                 )
+            }
+        }
+
+        if (showAudioSourceSheet) {
+            ChoiceBottomSheet(
+                title = "Voice-Over",
+                subtitle = "Seedhi audio file chunein, ya kisi video mein se uski audio nikal lein",
+                options = listOf(
+                    ChoiceOption(
+                        label = "🎵 Audio File",
+                        selected = false,
+                        onSelect = {
+                            showAudioSourceSheet = false
+                            audioLauncher.launch("audio/*")
+                        }
+                    ),
+                    ChoiceOption(
+                        label = "🎬 Video se Nikalo",
+                        selected = false,
+                        onSelect = {
+                            showAudioSourceSheet = false
+                            videoForAudioLauncher.launch("video/*")
+                        }
+                    )
+                ),
+                onDismiss = { showAudioSourceSheet = false }
+            )
+        }
+        if (audioExtractInProgress) {
+            Box(
+                modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(color = CyanPrimary)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(text = "Video se audio nikali ja rahi hai…", color = TextPrimary, fontSize = 13.sp)
+                }
             }
         }
     }
@@ -704,6 +798,7 @@ private fun PreviewPlayer(
     val currentCaptionText = if (project.captionsEnabled) {
         captionSegments.firstOrNull { positionMs in it.startMs..it.endMs }?.text
     } else null
+    val captionFontFamily = rememberCaptionFontFamily(project.captionsFont)
 
     DisposableEffect(project.voiceOverUri, project.processedAudioPath) {
         val uriString = project.voiceOverUri
@@ -903,6 +998,7 @@ private fun PreviewPlayer(
                     color = Color.White,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
+                    fontFamily = captionFontFamily,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
@@ -1314,6 +1410,109 @@ private fun formatMs(ms: Long): String {
 }
 
 /**
+ * Loads the chosen caption font straight from assets/ for the live
+ * Preview, matching whichever font RenderEngine's resolveFontFile picks
+ * for the actual burned-in export — so Preview shows the same font the
+ * final video will have. Returns null (system default) when that font's
+ * .ttf hasn't actually been placed under app/src/main/assets/ yet, rather
+ * than crashing.
+ */
+@Composable
+private fun rememberCaptionFontFamily(fontId: String): androidx.compose.ui.text.font.FontFamily? {
+    val context = LocalContext.current
+    return remember(fontId) {
+        // User-imported font first — real file already on disk.
+        com.vellora.cut.autogen.data.CaptionFonts.importedFile(context, fontId)?.let { file ->
+            return@remember try {
+                androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font(file))
+            } catch (e: Exception) {
+                null
+            }
+        }
+        val assetPath = com.vellora.cut.autogen.data.CaptionFonts.assetPath(fontId) ?: return@remember null
+        try {
+            context.assets.open(assetPath).close() // just confirms the file is actually there
+            androidx.compose.ui.text.font.FontFamily(
+                androidx.compose.ui.text.font.Font(assetPath, context.assets)
+            )
+        } catch (e: Exception) {
+            null
+        }
+    }
+}
+
+/**
+ * Handles the "+ Import Font" button: the picked [uri] can be a plain
+ * .ttf/.otf, or a .zip (exactly what most free-font sites hand you) — in
+ * the zip case, the first .ttf/.otf entry found inside is what gets used.
+ * The file is copied into app-private storage
+ * ([com.vellora.cut.autogen.data.CaptionFonts.importedFontsDir]) so it's
+ * usable immediately in both Preview and the final burned-in export, no
+ * rebuild required. Returns the new font's id (to auto-select it) on success.
+ */
+private suspend fun importCaptionFontFromUri(
+    context: android.content.Context,
+    uri: Uri
+): Result<String> = withContext(Dispatchers.IO) {
+    try {
+        val displayName = context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (idx >= 0 && cursor.moveToFirst()) cursor.getString(idx) else null
+        } ?: uri.lastPathSegment ?: "font"
+
+        val destDir = com.vellora.cut.autogen.data.CaptionFonts.importedFontsDir(context)
+        val looksLikeZip = displayName.endsWith(".zip", ignoreCase = true)
+
+        fun sanitize(name: String): String =
+            name.substringAfterLast('/').replace(Regex("[^a-zA-Z0-9._-]"), "_")
+
+        val input = context.contentResolver.openInputStream(uri)
+            ?: return@withContext Result.failure(Exception("File khol nahi saki"))
+
+        input.use { stream ->
+            if (looksLikeZip) {
+                java.util.zip.ZipInputStream(stream).use { zip ->
+                    var entry = zip.nextEntry
+                    while (entry != null) {
+                        val entryName = entry.name
+                        if (!entry.isDirectory && entryName.substringAfterLast('.', "")
+                                .lowercase() in listOf("ttf", "otf")
+                        ) {
+                            val safeName = sanitize(entryName.substringAfterLast('/'))
+                            val destFile = File(destDir, safeName)
+                            java.io.FileOutputStream(destFile).use { out -> zip.copyTo(out) }
+                            zip.closeEntry()
+                            if (destFile.length() > 0) {
+                                return@withContext Result.success("imported:$safeName")
+                            } else {
+                                destFile.delete()
+                                return@withContext Result.failure(Exception("Zip ke andar font file khali nikli"))
+                            }
+                        }
+                        zip.closeEntry()
+                        entry = zip.nextEntry
+                    }
+                    return@withContext Result.failure(Exception("Is zip ke andar koi .ttf/.otf nahi mila"))
+                }
+            } else {
+                val ext = displayName.substringAfterLast('.', "").lowercase()
+                val safeExt = if (ext in listOf("ttf", "otf")) ext else "ttf"
+                val safeName = sanitize(displayName.substringBeforeLast('.', displayName)) + ".$safeExt"
+                val destFile = File(destDir, safeName)
+                java.io.FileOutputStream(destFile).use { out -> stream.copyTo(out) }
+                if (destFile.length() <= 0) {
+                    destFile.delete()
+                    return@withContext Result.failure(Exception("File khali nikli"))
+                }
+                return@withContext Result.success("imported:$safeName")
+            }
+        }
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
+}
+
+/**
  * Small bottom card for real Whisper captions: Generate (or Regenerate)
  * button + an Enabled/Disabled toggle once segments exist. Same compact
  * bottom-card look as [SmallSliderSheet]/[ChoiceBottomSheet].
@@ -1325,10 +1524,38 @@ private fun CaptionsSheet(
     errorMessage: String?,
     onDismiss: () -> Unit,
     onGenerate: () -> Unit,
-    onToggleEnabled: (Boolean) -> Unit
+    onToggleEnabled: (Boolean) -> Unit,
+    onLanguageChange: (String) -> Unit,
+    onFontChange: (String) -> Unit
 ) {
     val segments = remember(project.captionsJson) {
         com.vellora.cut.autogen.data.CaptionSegments.fromJson(project.captionsJson)
+    }
+
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var fontsRefreshTick by remember { mutableStateOf(0) }
+    var importingFont by remember { mutableStateOf(false) }
+    var importFontError by remember { mutableStateOf<String?>(null) }
+    val availableFonts = remember(fontsRefreshTick) {
+        com.vellora.cut.autogen.data.CaptionFonts.allAvailable(context)
+    }
+    val importFontLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        importingFont = true
+        importFontError = null
+        scope.launch {
+            val result = importCaptionFontFromUri(context, uri)
+            importingFont = false
+            result.onSuccess { newFontId ->
+                fontsRefreshTick++
+                onFontChange(newFontId) // apply the just-imported font immediately
+            }.onFailure { e ->
+                importFontError = e.message ?: "Font import fail hui"
+            }
+        }
     }
 
     Box(
@@ -1353,6 +1580,90 @@ private fun CaptionsSheet(
                 text = "اصل Whisper AI transcription — جو بولا گیا وہی لکھا جائے گا",
                 color = TextSecondary,
                 fontSize = 11.sp
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(text = "Language", color = TextSecondary, fontSize = 11.sp)
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                listOf("ur" to "اردو", "hi" to "हिंदी").forEach { (code, label) ->
+                    val selected = project.captionsLanguage == code
+                    Surface(
+                        onClick = { onLanguageChange(code) },
+                        shape = RoundedCornerShape(20.dp),
+                        color = if (selected) CyanPrimary else SurfaceVariant
+                    ) {
+                        Text(
+                            text = label,
+                            color = if (selected) BackgroundDark else TextPrimary,
+                            fontSize = 13.sp,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                        )
+                    }
+                }
+            }
+            Text(
+                text = "(ابھی صرف یہ دو — باقی زبانیں بعد میں شامل ہوں گی)",
+                color = TextSecondary,
+                fontSize = 10.sp,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(text = "Font", color = TextSecondary, fontSize = 11.sp)
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                availableFonts.forEach { (id, label, _) ->
+                    val selected = project.captionsFont == id
+                    Surface(
+                        onClick = { onFontChange(id) },
+                        shape = RoundedCornerShape(20.dp),
+                        color = if (selected) CyanPrimary else SurfaceVariant
+                    ) {
+                        Text(
+                            text = label,
+                            color = if (selected) BackgroundDark else TextPrimary,
+                            fontSize = 12.sp,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                        )
+                    }
+                }
+                // CapCut-style "Import Font": pick a .ttf/.otf, or a .zip that
+                // contains one (as downloaded from most free-font sites) —
+                // extracted/copied into app storage and usable immediately,
+                // no rebuild needed.
+                Surface(
+                    onClick = {
+                        if (!importingFont) {
+                            importFontError = null
+                            importFontLauncher.launch(arrayOf("*/*"))
+                        }
+                    },
+                    shape = RoundedCornerShape(20.dp),
+                    color = SurfaceVariant
+                ) {
+                    Text(
+                        text = if (importingFont) "⏳ Import ho raha hai…" else "+ Import Font",
+                        color = TextPrimary,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                    )
+                }
+            }
+            if (importFontError != null) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(text = "⚠ $importFontError", color = Color(0xFFFF6B6B), fontSize = 11.sp)
+            }
+            Text(
+                text = "Font file (.ttf/.otf) ya us par mushtamil .zip download karke yahan import karein",
+                color = TextSecondary,
+                fontSize = 10.sp,
+                modifier = Modifier.padding(top = 4.dp)
             )
             Spacer(modifier = Modifier.height(14.dp))
 

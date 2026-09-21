@@ -22,7 +22,8 @@ object CaptionGenerator {
         context: Context,
         voiceOverUri: String,
         processedAudioPath: String?,
-        accounts: List<CloudflareAccount>
+        accounts: List<CloudflareAccount>,
+        language: String = "ur"
     ): Result<List<CaptionSegment>> = withContext(Dispatchers.IO) {
         if (accounts.isEmpty()) {
             return@withContext Result.failure(
@@ -36,7 +37,7 @@ object CaptionGenerator {
             return@withContext Result.failure(Exception("Voice-over file open nahi ho saka: ${e.message}"))
         }
 
-        WhisperChunkedTranscriber.transcribe(context, audioFile, accounts)
+        WhisperChunkedTranscriber.transcribe(context, audioFile, accounts, language)
     }
 
     private fun resolveAudioFile(context: Context, pathOrUri: String): File {

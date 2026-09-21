@@ -97,7 +97,8 @@ class CloudflareAiClient {
     fun transcribeAudio(
         audioBytes: ByteArray,
         accountId: String,
-        apiToken: String
+        apiToken: String,
+        language: String? = null
     ): List<com.vellora.cut.autogen.data.CaptionSegment> {
         val model = "@cf/openai/whisper-large-v3-turbo"
         val url = "https://api.cloudflare.com/client/v4/accounts/$accountId/ai/run/$model"
@@ -105,6 +106,12 @@ class CloudflareAiClient {
         val base64Audio = Base64.encodeToString(audioBytes, Base64.NO_WRAP)
         val body = JSONObject().apply {
             put("audio", base64Audio)
+            // Whisper auto-detects language when this is omitted, but for
+            // Urdu specifically it often defaults to Hindi/Devanagari script
+            // instead (the two languages are spoken almost identically) —
+            // passing the code explicitly is what actually gets Urdu
+            // (Nastaliq/Arabic script) output instead of Devanagari.
+            if (language != null) put("language", language)
         }.toString().toRequestBody("application/json".toMediaType())
 
         val request = Request.Builder()
@@ -164,7 +171,7 @@ class CloudflareAiClient {
         accountId: String,
         apiToken: String
     ): String {
-        val model = "@cf/qwen/qwen3.8-27b"
+        val model = "@cf/meta/llama-3.1-8b-instruct"
         val url = "https://api.cloudflare.com/client/v4/accounts/$accountId/ai/run/$model"
 
         val messages = org.json.JSONArray().put(
@@ -179,11 +186,8 @@ class CloudflareAiClient {
             // in their own April 2025 changelog) — nowhere near enough for a
             // full Title+Description+Tags+Hashtags reply, so the response was
             // silently cut off after the title (or partway through the
-            // description) with Tags/Hashtags missing entirely. Bumped from
-            // 1200 to 2600 for qwen3.8-27b: a real 150-300 word professional
-            // description alone needs ~300-450 tokens, and this model can
-            // also emit reasoning/thinking tokens before its actual answer.
-            put("max_tokens", 2600)
+            // description) with Tags/Hashtags missing entirely.
+            put("max_tokens", 1200)
         }.toString().toRequestBody("application/json".toMediaType())
 
         val request = Request.Builder()

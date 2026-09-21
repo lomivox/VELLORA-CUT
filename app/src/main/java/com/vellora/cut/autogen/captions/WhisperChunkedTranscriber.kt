@@ -25,6 +25,7 @@ object WhisperChunkedTranscriber {
         context: Context,
         audioFile: File,
         accounts: List<CloudflareAccount>,
+        language: String? = null,
         onChunkProgress: (done: Int, total: Int) -> Unit = { _, _ -> }
     ): Result<List<CaptionSegment>> = withContext(Dispatchers.IO) {
         if (accounts.isEmpty()) {
@@ -53,7 +54,7 @@ object WhisperChunkedTranscriber {
             var chunkTranscribed = false
             for (account in accounts) {
                 try {
-                    val segments = client.transcribeAudio(chunkBytes, account.accountId, account.apiToken)
+                    val segments = client.transcribeAudio(chunkBytes, account.accountId, account.apiToken, language)
                     segments.forEach { seg ->
                         allSegments += seg.copy(
                             startMs = seg.startMs + chunkOffsetMs,

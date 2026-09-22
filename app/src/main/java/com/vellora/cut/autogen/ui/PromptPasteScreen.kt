@@ -126,7 +126,7 @@ fun PromptPasteScreen(
                     if (audioWorkInfo?.state == WorkInfo.State.FAILED) {
                         val err = audioWorkInfo.outputData.getString(GeneratePromptsFromAudioWorker.KEY_ERROR)
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text(text = "❌ ${err ?: \"Prompts nahi ban sakay\"}", color = TextSecondary, fontSize = 11.sp)
+                        Text(text = "❌ ${err ?: "Prompts nahi ban sakay"}", color = TextSecondary, fontSize = 11.sp)
                     }
                 }
             }

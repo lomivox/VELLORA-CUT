@@ -137,48 +137,57 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
             return
         }
         isWorking = true
-
-        val result = ShortsMetadataGenerator.generate(
-            context = context,
-            videoUri = videoUriForGen,
-            manualTopic = manualTopic,
-            accounts = accounts,
-            language = outputLanguage,
-            onStatusChange = { statusText = it }
-        )
-        isWorking = false
-
-        result.onSuccess { meta ->
-            var updated = entity.copy(
-                status = ShortMetadataStatus.DONE,
-                transcript = meta.transcript,
-                researchedKeywords = meta.researchedKeywords.joinToString(","),
-                generatedTitle = meta.title,
-                generatedDescription = meta.description,
-                generatedTags = meta.tags,
-                generatedHashtags = meta.hashtags
+        com.vellora.cut.autogen.render.RenderKeepAliveService.start(context, "Shorts Metadata ban rahi hai…")
+        try {
+            val result = ShortsMetadataGenerator.generate(
+                context = context,
+                videoUri = videoUriForGen,
+                manualTopic = manualTopic,
+                accounts = accounts,
+                language = outputLanguage,
+                onStatusChange = { statusText = it }
             )
-            dao.update(updated)
-            activeProject = updated
+            isWorking = false
 
-            if (autoUploadEnabled && updated.videoUri.isNotBlank()) {
-                isWorking = true
-                statusText = "uploading"
-                updated = updated.copy(status = ShortMetadataStatus.UPLOADING)
-                activeProject = updated
-                updated = uploadToYouTube(updated)
+            result.onSuccess { meta ->
+                var updated = entity.copy(
+                    status = ShortMetadataStatus.DONE,
+                    transcript = meta.transcript,
+                    researchedKeywords = meta.researchedKeywords.joinToString(","),
+                    generatedTitle = meta.title,
+                    generatedDescription = meta.description,
+                    generatedTags = meta.tags,
+                    generatedHashtags = meta.hashtags
+                )
                 dao.update(updated)
                 activeProject = updated
-                isWorking = false
-                if (updated.status == ShortMetadataStatus.ERROR) {
-                    errorMessage = updated.errorMessage
+
+                if (autoUploadEnabled && updated.videoUri.isNotBlank()) {
+                    isWorking = true
+                    statusText = "uploading"
+                    updated = updated.copy(status = ShortMetadataStatus.UPLOADING)
+                    activeProject = updated
+                    updated = uploadToYouTube(updated)
+                    dao.update(updated)
+                    activeProject = updated
+                    isWorking = false
+                    if (updated.status == ShortMetadataStatus.ERROR) {
+                        errorMessage = updated.errorMessage
+                    }
                 }
+            }.onFailure { e ->
+                val updated = entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = e.message)
+                dao.update(updated)
+                activeProject = updated
+                errorMessage = e.message
             }
-        }.onFailure { e ->
-            val updated = entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = e.message)
-            dao.update(updated)
-            activeProject = updated
-            errorMessage = e.message
+        } finally {
+            // Covers the generation call AND the optional YouTube upload
+            // that can follow it — the process needs to survive screen-off
+            // for either, and this fires whichever branch above ran, or
+            // even if something throws unexpectedly.
+            isWorking = false
+            com.vellora.cut.autogen.render.RenderKeepAliveService.stop(context)
         }
     }
 

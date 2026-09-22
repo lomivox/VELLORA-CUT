@@ -415,6 +415,7 @@ fun TimelineScreen(
             val triggerRender: () -> Unit = {
                 showExportOverlay = true
                 renderState = RenderUiState.Rendering(0f)
+                com.vellora.cut.autogen.render.RenderKeepAliveService.start(context, "Video export ho rahi hai…")
                 RenderEngine.render(
                     context = context,
                     project = currentProject,
@@ -424,6 +425,7 @@ fun TimelineScreen(
                         renderState = RenderUiState.Rendering(fraction)
                     },
                     onComplete = { result ->
+                        com.vellora.cut.autogen.render.RenderKeepAliveService.stop(context)
                         when (result) {
                             is RenderResult.Success -> {
                                 renderState = RenderUiState.Done(result.outputFile)

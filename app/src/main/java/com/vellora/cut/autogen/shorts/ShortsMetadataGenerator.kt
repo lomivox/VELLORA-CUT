@@ -120,17 +120,28 @@ object ShortsMetadataGenerator {
         val prompt = buildPrompt(transcript, keywords, competitorTitles, language, channelName)
         var rawResponse: String? = null
         var lastError: String? = null
-        for (account in accounts) {
-            try {
-                rawResponse = client.generateText(prompt, account.accountId, account.apiToken)
-                break
-            } catch (e: CloudflareApiException) {
-                lastError = e.message
-                if (e.isQuotaExceeded) continue
-                break
-            } catch (e: Exception) {
-                lastError = e.message ?: "Unknown error"
-                break
+        // Every account gets up to 2 tries (with a short pause between
+        // them) before moving on, and EVERY account is tried regardless of
+        // what kind of error the previous one hit — a one-off "Khaali
+        // response mila" or a transient DNS/network hiccup on a single
+        // attempt used to permanently fail the whole operation right there
+        // (the old code `break`-ed out on the very first non-quota error
+        // instead of retrying or trying the next account), which is why
+        // this sometimes failed almost immediately with no real chance to
+        // succeed. A genuinely bad prompt/account will still fail the same
+        // way every time and correctly surface its real error at the end.
+        outer@ for (account in accounts) {
+            repeat(2) { attempt ->
+                try {
+                    rawResponse = client.generateText(prompt, account.accountId, account.apiToken)
+                    return@outer
+                } catch (e: CloudflareApiException) {
+                    lastError = e.message
+                    if (!e.isQuotaExceeded && attempt == 0) kotlinx.coroutines.delay(1500)
+                } catch (e: Exception) {
+                    lastError = e.message ?: "Unknown error"
+                    if (attempt == 0) kotlinx.coroutines.delay(1500)
+                }
             }
         }
         if (rawResponse.isNullOrBlank()) {

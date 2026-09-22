@@ -134,7 +134,7 @@ object ShortsMetadataGenerator {
             repeat(2) { attempt ->
                 try {
                     rawResponse = client.generateText(prompt, account.accountId, account.apiToken)
-                    return@outer
+                    break@outer
                 } catch (e: CloudflareApiException) {
                     lastError = e.message
                     if (!e.isQuotaExceeded && attempt == 0) kotlinx.coroutines.delay(1500)

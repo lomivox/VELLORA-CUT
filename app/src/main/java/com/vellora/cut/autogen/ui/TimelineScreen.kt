@@ -319,6 +319,26 @@ fun TimelineScreen(
             }
             val totalMs = totalDurationMs(timeline)
 
+            // Smart Sequence Generator: fills in Motion+Transition for any
+            // done image that doesn't have one cached yet (new image, or
+            // energy classification just landed for one that was still
+            // NEUTRAL/blended before). Runs here — not only at Export —
+            // so Preview always shows the exact same picks Export will
+            // render (step 7 of the agreed Phase 1 plan). Writing through
+            // dao.updatePrompt re-emits observePrompts' Flow, which is
+            // what actually updates doneImages/timeline above.
+            LaunchedEffect(doneImages.map { it.id to it.energyLabel to it.generatedMotionEffect }, currentProject.videoStyle) {
+                if (doneImages.isEmpty()) return@LaunchedEffect
+                val regenerated = com.vellora.cut.autogen.render.SmartSequenceGenerator.generate(currentProject, doneImages)
+                regenerated.forEachIndexed { idx, updated ->
+                    if (updated.generatedMotionEffect != doneImages[idx].generatedMotionEffect ||
+                        updated.generatedTransitionType != doneImages[idx].generatedTransitionType
+                    ) {
+                        dao.updatePrompt(updated)
+                    }
+                }
+            }
+
             // ---- PREVIEW (~48.7%) ----
             Box(
                 modifier = Modifier
@@ -957,9 +977,9 @@ private fun PreviewPlayer(
                         .graphicsLayer {
                             applyLiveMotionAndTransition(
                                 scope = this,
-                                motionEffect = project.motionEffect,
+                                motionEffect = currentImage?.prompt?.generatedMotionEffect ?: project.motionEffect,
                                 motionProgress = localProgress,
-                                transitionType = project.transitionType,
+                                transitionType = nextImage?.prompt?.generatedTransitionType ?: project.transitionType,
                                 transitionT = transitionT,
                                 isIncomingLayer = false,
                                 inTransition = inTransition
@@ -980,9 +1000,9 @@ private fun PreviewPlayer(
                         .graphicsLayer {
                             applyLiveMotionAndTransition(
                                 scope = this,
-                                motionEffect = project.motionEffect,
+                                motionEffect = nextImage?.prompt?.generatedMotionEffect ?: project.motionEffect,
                                 motionProgress = 0f, // incoming image starts its own motion effect fresh
-                                transitionType = project.transitionType,
+                                transitionType = nextImage?.prompt?.generatedTransitionType ?: project.transitionType,
                                 transitionT = transitionT,
                                 isIncomingLayer = true,
                                 inTransition = true

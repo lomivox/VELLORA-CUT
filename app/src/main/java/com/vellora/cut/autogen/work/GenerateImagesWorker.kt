@@ -134,6 +134,53 @@ class GenerateImagesWorker(
         }
         dao.updateProject(dao.getProject(projectId)!!.copy(status = finalStatus))
 
+        // Energy classification pass: runs every time this worker runs,
+        // over EVERY done image whose classification isn't `done` yet
+        // (freshly generated this run, left `pending` from before, or
+        // `failed` on a previous attempt) — this IS the retry mechanism:
+        // a dropped/failed AI call just gets picked up again next time
+        // Generate is run, with no separate retry button or step needed.
+        // A classification failure here never fails the worker or blocks
+        // generation/render — SmartSequenceGenerator falls back to
+        // EnergyLevel.NEUTRAL for anything still unclassified.
+        val needingClassification = dao.getPromptsNeedingEnergyClassification(projectId)
+        for (prompt in needingClassification) {
+            if (isStopped) break
+            val usableAccounts = accounts.filter { it.accountId !in exhaustedAccountIds }
+            var label: String? = null
+            for (account in usableAccounts) {
+                try {
+                    label = client.classifyImageEnergy(
+                        prompt = prompt.promptText,
+                        accountId = account.accountId,
+                        apiToken = account.apiToken
+                    )
+                    break
+                } catch (e: CloudflareApiException) {
+                    if (e.isQuotaExceeded) {
+                        exhaustedAccountIds += account.accountId
+                        continue
+                    } else {
+                        break
+                    }
+                } catch (e: Exception) {
+                    break
+                }
+            }
+            dao.updatePrompt(
+                if (label != null) {
+                    prompt.copy(
+                        energyLabel = label,
+                        energyClassificationStatus = com.vellora.cut.autogen.data.EnergyClassificationStatus.DONE
+                    )
+                } else {
+                    prompt.copy(
+                        energyClassificationStatus = com.vellora.cut.autogen.data.EnergyClassificationStatus.FAILED
+                    )
+                }
+            )
+        }
+
         Result.success(workDataOf(KEY_DONE to successCount, KEY_FAILED to failCount))
     }
 

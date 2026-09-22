@@ -42,6 +42,13 @@ object RenderEngine {
     // so the on-screen transition timing matches what RenderEngine actually
     // produces.
     const val TRANSITION_DURATION_SEC = 0.7
+    /** Duration used for TransitionType.CUT's edges instead of
+     * TRANSITION_DURATION_SEC — a couple of frames, so it reads as an
+     * instant hard cut rather than a visible fade (see xfadeNameFor). */
+    const val CUT_TRANSITION_DURATION_SEC = 0.04
+
+    private fun durationFor(transitionType: String): Double =
+        if (transitionType == TransitionType.CUT) CUT_TRANSITION_DURATION_SEC else TRANSITION_DURATION_SEC
 
     /**
      * Starts an async render. [onProgress] is called repeatedly with 0f..1f.
@@ -91,10 +98,21 @@ object RenderEngine {
 
         val (width, height) = resolutionToSize(project.resolution)
 
+        // Per-image Motion (SmartSequenceGenerator's pick, falling back to
+        // the project-wide default for any image it hasn't touched yet —
+        // e.g. an older project, or one render() is called on directly
+        // without going through the generate+persist step first).
+        val motionEffects = timeline.map { it.prompt.generatedMotionEffect ?: project.motionEffect }
+        // Per-edge incoming Transition, one entry per image from index 1
+        // onward (image 0 has no incoming transition).
+        val transitionTypes = (1 until timeline.size).map { i ->
+            timeline[i].prompt.generatedTransitionType ?: project.transitionType
+        }
+
         val arguments = try {
             buildArguments(
                 context, timeline, voiceOverFile, width, height,
-                project.transitionType, project.motionEffect,
+                transitionTypes, motionEffects,
                 if (project.captionsEnabled) CaptionSegments.fromJson(project.captionsJson) else emptyList(),
                 project.captionsFont,
                 outputFile
@@ -143,22 +161,27 @@ object RenderEngine {
         voiceOverFile: File?,
         width: Int,
         height: Int,
-        transitionType: String,
-        motionEffect: String,
+        transitionTypes: List<String>,
+        motionEffects: List<String>,
         captions: List<CaptionSegment>,
         captionsFont: String,
         outputFile: File
     ): Array<String> {
         val n = timeline.size
         val durationsSec = timeline.map { it.durationMs / 1000.0 }
+        // Edge j (0-indexed, connecting image j and image j+1) uses
+        // transitionTypes[j]'s own duration (CUT gets a near-zero
+        // duration instead of the usual 0.7s — see durationFor).
+        val edgeDurations = transitionTypes.map { durationFor(it) }
 
         // Each image is fed as its own looped-still input. Every image except the
-        // last needs TRANSITION_DURATION_SEC of extra source material so its tail
-        // can overlap with the next image during the crossfade/slide — that overlap
-        // is what keeps the final output length equal to sum(durationsSec) despite
-        // the transitions "eating into" the shown time.
+        // last needs its OUTGOING edge's transition duration as extra source
+        // material so its tail can overlap with the next image during the
+        // crossfade/slide/cut — that overlap is what keeps the final output
+        // length equal to sum(durationsSec) despite transitions "eating into"
+        // the shown time.
         val inputLengths = durationsSec.mapIndexed { index, d ->
-            if (n > 1 && index < n - 1) d + TRANSITION_DURATION_SEC else d
+            if (n > 1 && index < n - 1) d + edgeDurations[index] else d
         }
 
         val args = mutableListOf<String>("-y")
@@ -174,7 +197,8 @@ object RenderEngine {
         }
 
         val filterComplex = buildFilterComplex(
-            context, n, inputLengths, durationsSec, width, height, transitionType, motionEffect, captions, captionsFont
+            context, n, inputLengths, durationsSec, edgeDurations, width, height,
+            transitionTypes, motionEffects, captions, captionsFont
         )
 
         args += listOf("-filter_complex", filterComplex.script, "-map", "[${filterComplex.finalVideoLabel}]")
@@ -199,10 +223,11 @@ object RenderEngine {
         n: Int,
         inputLengths: List<Double>,
         durationsSec: List<Double>,
+        edgeDurations: List<Double>,
         width: Int,
         height: Int,
-        transitionType: String,
-        motionEffect: String,
+        transitionTypes: List<String>,
+        motionEffects: List<String>,
         captions: List<CaptionSegment>,
         captionsFont: String
     ): FilterComplexResult {
@@ -213,6 +238,7 @@ object RenderEngine {
         // first gives zoompan room to move/zoom without visible edges. STATIC skips
         // zoompan entirely (no motion requested — cheaper and avoids any drift).
         for (i in 0 until n) {
+            val motionEffect = motionEffects[i]
             val frames = max(2, (inputLengths[i] * FPS).roundToInt())
             if (motionEffect == MotionEffect.STATIC) {
                 parts += "[$i:v]scale=${width}:${height}:force_original_aspect_ratio=increase," +
@@ -230,17 +256,19 @@ object RenderEngine {
         } else {
             // Stage 2: chain xfade transitions. offset for the k-th transition (1-indexed,
             // connecting seg(k-1) and seg(k)) is the cumulative sum of the first k images'
-            // *intended* on-screen durations — this is what keeps the final length matching
-            // the voice-over regardless of how many transitions are chained.
-            val xfadeName = xfadeNameFor(transitionType)
+            // *intended* on-screen durations minus THAT edge's own duration — this is what
+            // keeps the final length matching the voice-over regardless of how many
+            // transitions are chained, even with mixed (soft/CUT) per-edge durations.
             var previousLabel = "seg0"
             var cumulative = 0.0
             for (i in 1 until n) {
+                val edgeDuration = edgeDurations[i - 1]
+                val xfadeName = xfadeNameFor(transitionTypes[i - 1])
                 cumulative += durationsSec[i - 1]
-                val offset = max(0.0, cumulative - TRANSITION_DURATION_SEC)
+                val offset = max(0.0, cumulative - edgeDuration)
                 val outLabel = if (i == n - 1) "vout" else "x$i"
                 parts += "[$previousLabel][seg$i]xfade=transition=$xfadeName:" +
-                    "duration=%.3f:offset=%.3f".format(TRANSITION_DURATION_SEC, offset) +
+                    "duration=%.3f:offset=%.3f".format(edgeDuration, offset) +
                     "[$outLabel]"
                 previousLabel = outLabel
             }
@@ -353,6 +381,11 @@ object RenderEngine {
         TransitionType.SQUEEZE -> "squeezeh"
         TransitionType.DIAGONAL -> "diagtl"
         TransitionType.DISTANCE -> "distance"
+        // CUT has no real xfade equivalent — approximated as a "fade"
+        // transition run for CUT_TRANSITION_DURATION_SEC (a couple of
+        // frames) instead of TRANSITION_DURATION_SEC, which reads as an
+        // instant hard cut rather than a visible fade. See buildFilterComplex.
+        TransitionType.CUT -> "fade"
         else -> "fade" // CROSSFADE (default)
     }
 

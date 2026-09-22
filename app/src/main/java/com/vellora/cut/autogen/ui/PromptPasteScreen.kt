@@ -23,10 +23,12 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.vellora.cut.autogen.data.AutoGenDao
+import com.vellora.cut.autogen.data.AutoGenProjectEntity
 import com.vellora.cut.autogen.data.PromptEntity
 import com.vellora.cut.autogen.data.PromptStatus
 import com.vellora.cut.autogen.data.SecureCredentialStore
 import com.vellora.cut.autogen.work.GenerateImagesWorker
+import com.vellora.cut.autogen.work.GeneratePromptsFromAudioWorker
 import com.vellora.cut.data.AppDatabase
 import com.vellora.cut.ui.theme.*
 import kotlinx.coroutines.launch
@@ -51,6 +53,8 @@ fun PromptPasteScreen(
     val workManager = remember { WorkManager.getInstance(context) }
 
     val existingPrompts by dao.observePrompts(projectId).collectAsState(initial = emptyList())
+    var project by remember { mutableStateOf<AutoGenProjectEntity?>(null) }
+    LaunchedEffect(projectId) { project = dao.getProject(projectId) }
 
     var rawText by remember { mutableStateOf("") }
     var parsed by remember { mutableStateOf<List<ParsedPrompt>>(emptyList()) }
@@ -72,6 +76,60 @@ fun PromptPasteScreen(
 
             Spacer(modifier = Modifier.height(4.dp))
             Text(text = "Prompts", color = CyanPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+
+            // Phase 3: generate the whole prompt list automatically from the
+            // project's own voice-over instead of typing/pasting it — see
+            // GeneratePromptsFromAudioWorker's doc comment for the pipeline.
+            if (project?.voiceOverUri != null) {
+                Spacer(modifier = Modifier.height(10.dp))
+                val audioWorkInfos by workManager
+                    .getWorkInfosForUniqueWorkLiveData(GeneratePromptsFromAudioWorker.uniqueWorkName(projectId))
+                    .observeAsState(initial = emptyList())
+                val audioWorkInfo = audioWorkInfos.firstOrNull()
+                val audioRunning = audioWorkInfo?.state == WorkInfo.State.RUNNING ||
+                    audioWorkInfo?.state == WorkInfo.State.ENQUEUED
+                val stage = audioWorkInfo?.progress?.getString(GeneratePromptsFromAudioWorker.KEY_STAGE)
+                val doneCount = audioWorkInfo?.progress?.getInt(GeneratePromptsFromAudioWorker.KEY_DONE, 0) ?: 0
+                val totalCount = audioWorkInfo?.progress?.getInt(GeneratePromptsFromAudioWorker.KEY_TOTAL, 0) ?: 0
+
+                if (!credentials.hasCredentials()) {
+                    Text(
+                        text = "⚠️ Audio سے خودکار prompts کے لیے پہلے Settings میں Cloudflare account add کریں",
+                        color = TextSecondary,
+                        fontSize = 11.sp
+                    )
+                } else {
+                    OutlinedButton(
+                        onClick = {
+                            val request = OneTimeWorkRequestBuilder<GeneratePromptsFromAudioWorker>()
+                                .setInputData(workDataOf(GeneratePromptsFromAudioWorker.KEY_PROJECT_ID to projectId))
+                                .build()
+                            workManager.enqueueUniqueWork(
+                                GeneratePromptsFromAudioWorker.uniqueWorkName(projectId),
+                                ExistingWorkPolicy.KEEP,
+                                request
+                            )
+                        },
+                        enabled = !audioRunning,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = when {
+                                audioRunning && stage == GeneratePromptsFromAudioWorker.STAGE_TRANSCRIBING ->
+                                    "Voice-over سن رہا ہے…"
+                                audioRunning -> "Prompts لکھ رہا ہے… ($doneCount/$totalCount)"
+                                existingPrompts.isNotEmpty() -> "🎙️ Audio سے دوبارہ Prompts بنائیں (موجودہ list بدل جائے گی)"
+                                else -> "🎙️ Audio سے خودکار Prompts بنائیں"
+                            }
+                        )
+                    }
+                    if (audioWorkInfo?.state == WorkInfo.State.FAILED) {
+                        val err = audioWorkInfo.outputData.getString(GeneratePromptsFromAudioWorker.KEY_ERROR)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(text = "❌ ${err ?: \"Prompts nahi ban sakay\"}", color = TextSecondary, fontSize = 11.sp)
+                    }
+                }
+            }
 
             if (existingPrompts.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))

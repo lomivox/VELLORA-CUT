@@ -88,6 +88,167 @@ class CloudflareAiClient {
     }
 
     /**
+     * Turns one spoken narration segment (a chunk of the voice-over's own
+     * transcript) into a descriptive, professional image-generation prompt
+     * — the core of the "audio se khudkar prompts" pipeline (see
+     * AutoPromptGenerator). Real Cloudflare text-generation call
+     * (llama-3.1-8b), same pooled-account/retry story as
+     * [classifyImageEnergy].
+     *
+     * Throws [CloudflareApiException] on failure — caller falls back to
+     * using [narrationText] itself as the prompt rather than blocking the
+     * whole pipeline on one bad AI call (never returns null/empty silently).
+     */
+    fun generateImagePromptFromNarration(
+        narrationText: String,
+        accountId: String,
+        apiToken: String
+    ): String {
+        val model = "@cf/meta/llama-3.1-8b-instruct"
+        val url = "https://api.cloudflare.com/client/v4/accounts/$accountId/ai/run/$model"
+
+        val systemInstruction =
+            "You convert one segment of a spoken video narration into a single " +
+                "professional AI image-generation prompt in English. The image will " +
+                "be shown on screen while this line is spoken. Describe a concrete, " +
+                "cinematic visual scene that matches the meaning and mood of the " +
+                "narration — do not describe text, subtitles, or a person talking " +
+                "into a microphone. Always include a visual style phrase (e.g. " +
+                "'cinematic lighting, photorealistic, 4k'). Reply with ONLY the " +
+                "prompt itself, one paragraph, no quotes, no preamble, no labels."
+
+        val body = JSONObject().apply {
+            put("messages", org.json.JSONArray().apply {
+                put(JSONObject().apply { put("role", "system"); put("content", systemInstruction) })
+                put(JSONObject().apply { put("role", "user"); put("content", narrationText) })
+            })
+            put("max_tokens", 200)
+        }.toString().toRequestBody("application/json".toMediaType())
+
+        val request = Request.Builder()
+            .url(url)
+            .addHeader("Authorization", "Bearer $apiToken")
+            .post(body)
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            val responseBody = response.body?.string()
+                ?: throw CloudflareApiException("Empty response from Cloudflare")
+
+            if (response.code == 429 || responseBody.contains("\"code\":4006")) {
+                throw CloudflareApiException(
+                    "Is account ka aaj ka quota khatam ho chuka hai",
+                    isQuotaExceeded = true
+                )
+            }
+
+            if (!response.isSuccessful) {
+                val errorMsg = try {
+                    JSONObject(responseBody)
+                        .optJSONArray("errors")?.optJSONObject(0)?.optString("message")
+                } catch (e: Exception) { null }
+                throw CloudflareApiException(errorMsg ?: "HTTP ${response.code}: ${response.message}")
+            }
+
+            val json = JSONObject(responseBody)
+            if (!json.optBoolean("success", false)) {
+                val errorMsg = json.optJSONArray("errors")?.optJSONObject(0)?.optString("message")
+                throw CloudflareApiException(errorMsg ?: "Cloudflare reported failure")
+            }
+
+            val prompt = json.optJSONObject("result")?.optString("response")?.trim()
+            if (prompt.isNullOrBlank()) throw CloudflareApiException("Empty prompt in response")
+            return prompt
+        }
+    }
+
+    /**
+     * Classifies a single image's mood from its own generation [prompt] —
+     * returns one of [com.vellora.cut.autogen.data.EnergyLevel]'s three
+     * values, via a real Cloudflare text-generation call (llama-3.1-8b),
+     * asked to answer with exactly one word. Called ONCE per image, right
+     * after that image is generated (see GenerateImagesWorker) — the
+     * result is cached on the PromptEntity, never re-requested for the
+     * same image once it succeeds.
+     *
+     * Throws [CloudflareApiException] on any failure (bad credentials,
+     * rate limit, network error, or an unparseable reply) — same as
+     * [generateImage]. The caller marks that image's classification
+     * `failed` and moves on; it is retried automatically on the next
+     * worker run rather than blocking generation or render.
+     */
+    fun classifyImageEnergy(
+        prompt: String,
+        accountId: String,
+        apiToken: String
+    ): String {
+        val model = "@cf/meta/llama-3.1-8b-instruct"
+        val url = "https://api.cloudflare.com/client/v4/accounts/$accountId/ai/run/$model"
+
+        val systemInstruction =
+            "You classify the MOOD of a single video slide from its image description. " +
+                "Reply with EXACTLY ONE WORD, nothing else: calm, neutral, or energetic. " +
+                "calm = slow, emotional, peaceful, reflective, sad, quiet. " +
+                "energetic = fast-paced, action, excitement, triumph, urgency, motivation-peak. " +
+                "neutral = anything that is neither clearly calm nor clearly energetic."
+
+        val body = JSONObject().apply {
+            put("messages", org.json.JSONArray().apply {
+                put(JSONObject().apply { put("role", "system"); put("content", systemInstruction) })
+                put(JSONObject().apply { put("role", "user"); put("content", prompt) })
+            })
+            put("max_tokens", 5)
+        }.toString().toRequestBody("application/json".toMediaType())
+
+        val request = Request.Builder()
+            .url(url)
+            .addHeader("Authorization", "Bearer $apiToken")
+            .post(body)
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            val responseBody = response.body?.string()
+                ?: throw CloudflareApiException("Empty response from Cloudflare")
+
+            if (response.code == 429 || responseBody.contains("\"code\":4006")) {
+                throw CloudflareApiException(
+                    "Is account ka aaj ka quota khatam ho chuka hai",
+                    isQuotaExceeded = true
+                )
+            }
+
+            if (!response.isSuccessful) {
+                val errorMsg = try {
+                    JSONObject(responseBody)
+                        .optJSONArray("errors")?.optJSONObject(0)?.optString("message")
+                } catch (e: Exception) { null }
+                throw CloudflareApiException(errorMsg ?: "HTTP ${response.code}: ${response.message}")
+            }
+
+            val json = JSONObject(responseBody)
+            if (!json.optBoolean("success", false)) {
+                val errorMsg = json.optJSONArray("errors")?.optJSONObject(0)?.optString("message")
+                throw CloudflareApiException(errorMsg ?: "Cloudflare reported failure")
+            }
+
+            val raw = json.optJSONObject("result")?.optString("response")
+                ?: throw CloudflareApiException("No classification in response")
+
+            val cleaned = raw.trim().lowercase().filter { it.isLetter() }
+            return when {
+                cleaned.contains("calm") -> com.vellora.cut.autogen.data.EnergyLevel.CALM
+                cleaned.contains("energetic") -> com.vellora.cut.autogen.data.EnergyLevel.ENERGETIC
+                cleaned.contains("neutral") -> com.vellora.cut.autogen.data.EnergyLevel.NEUTRAL
+                // Model replied with something unparseable — treat as a
+                // failure (not a silent neutral) so the caller retries this
+                // exact image later instead of permanently locking in a
+                // guess that was never really "neutral".
+                else -> throw CloudflareApiException("Unparseable classification: '$raw'")
+            }
+        }
+    }
+
+    /**
      * Transcribes [audioBytes] via Cloudflare's real Whisper model —
      * returns sentence-level segments with actual spoken timing (seconds,
      * converted to ms here), not a fake/estimated split. Throws

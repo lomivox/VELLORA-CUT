@@ -38,4 +38,21 @@ interface AutoGenDao {
 
     @Query("SELECT COUNT(*) FROM autogen_prompts WHERE projectId = :projectId")
     suspend fun countPrompts(projectId: Long): Int
+
+    /** Images that are already generated (`done`) but whose AI energy
+     * classification hasn't succeeded yet (`pending` — never tried — or
+     * `failed` — tried and dropped). GenerateImagesWorker calls this on
+     * every run, so a failed classification always gets retried the next
+     * time the worker runs for this project — no manual retry step, no
+     * re-generating the image itself. */
+    @Query(
+        "SELECT * FROM autogen_prompts WHERE projectId = :projectId AND status = 'done' " +
+            "AND energyClassificationStatus != 'done' ORDER BY orderIndex ASC"
+    )
+    suspend fun getPromptsNeedingEnergyClassification(projectId: Long): List<PromptEntity>
+
+    /** All generated images for a project, in order — what
+     * SmartSequenceGenerator reads to assign Motion+Transition. */
+    @Query("SELECT * FROM autogen_prompts WHERE projectId = :projectId AND status = 'done' ORDER BY orderIndex ASC")
+    suspend fun getDonePrompts(projectId: Long): List<PromptEntity>
 }

@@ -93,11 +93,26 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
     }
 }
 
+/** v11 -> v12: Smart Sequence Generator — per-image energy classification
+ * (calm/neutral/energetic) + the Motion/Transition it picked, plus the
+ * project's chosen style and fixed randomization seed. */
+val MIGRATION_11_12 = object : Migration(11, 12) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE autogen_projects ADD COLUMN videoStyle TEXT NOT NULL DEFAULT 'mixed_pro'")
+        db.execSQL("ALTER TABLE autogen_projects ADD COLUMN sequenceSeed INTEGER")
+        db.execSQL("ALTER TABLE autogen_prompts ADD COLUMN energyLabel TEXT")
+        db.execSQL("ALTER TABLE autogen_prompts ADD COLUMN energyClassificationStatus TEXT NOT NULL DEFAULT 'pending'")
+        db.execSQL("ALTER TABLE autogen_prompts ADD COLUMN generatedMotionEffect TEXT")
+        db.execSQL("ALTER TABLE autogen_prompts ADD COLUMN generatedTransitionType TEXT")
+        db.execSQL("ALTER TABLE autogen_prompts ADD COLUMN isManualEffect INTEGER")
+    }
+}
+
 @Database(
     entities = [
         AutoGenProjectEntity::class, PromptEntity::class, ShortMetadataEntity::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -114,7 +129,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "vellora.db"
                 )
-                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
+                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
                     // Safety net ONLY for a version jump with no migration
                     // listed above (e.g. someone on a version older than 4,
                     // or a future bump where a Migration was forgotten) —

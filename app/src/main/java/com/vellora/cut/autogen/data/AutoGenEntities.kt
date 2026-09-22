@@ -21,6 +21,51 @@ object PromptStatus {
     const val FAILED = "failed"
 }
 
+/** The "mood" of a generated image, guessed from its own prompt text by a
+ * single Cloudflare AI text call at image-generation time — see
+ * [PromptEntity.energyLabel]. Drives whether [SmartSequenceGenerator] picks
+ * a slow/gentle motion+transition or a fast/punchy one for that image. */
+object EnergyLevel {
+    const val CALM = "calm"
+    const val NEUTRAL = "neutral"
+    const val ENERGETIC = "energetic"
+}
+
+/** Status of the (separate, optional) AI energy-classification call for one
+ * image — see [PromptEntity.energyClassificationStatus]. This is
+ * deliberately independent from [PromptStatus]: an image can be fully
+ * `done` (generated, usable) while its classification is still `pending`
+ * or `failed` — a classification problem must never block generation or
+ * render. [FAILED] is always retried automatically the next time
+ * GenerateImagesWorker runs for this project (see its classification
+ * pass), so a dropped call recovers on its own without any manual step. */
+object EnergyClassificationStatus {
+    const val PENDING = "pending"
+    const val DONE = "done"
+    const val FAILED = "failed"
+}
+
+/** Overall look for [SmartSequenceGenerator]'s per-image Motion+Transition
+ * picks — see [AutoGenProjectEntity.videoStyle]. */
+object VideoStyle {
+    /** Slow zooms/pans + soft dissolves/fades only — calm, editorial look. */
+    const val CINEMATIC = "cinematic"
+    /** Fast zooms/pans + cuts/short dissolves only — punchy, high-energy look. */
+    const val DYNAMIC = "dynamic"
+    /** Controlled mix of both pools, picked per-image by the image's own
+     * [EnergyLevel] — the default for most videos. */
+    const val MIXED_PRO = "mixed_pro"
+
+    val ALL = listOf(CINEMATIC, DYNAMIC, MIXED_PRO)
+
+    fun label(value: String): String = when (value) {
+        CINEMATIC -> "Cinematic"
+        DYNAMIC -> "Dynamic"
+        MIXED_PRO -> "Mixed Pro"
+        else -> value
+    }
+}
+
 @Entity(tableName = "autogen_projects")
 data class AutoGenProjectEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -37,8 +82,19 @@ data class AutoGenProjectEntity(
     val renderedFilePath: String? = null,
     /** Transition style between consecutive images — see [TransitionType]. */
     val transitionType: String = TransitionType.CROSSFADE,
-    /** Per-image motion effect — see [MotionEffect]. */
+    /** Per-image motion effect — see [MotionEffect]. Used as the fallback
+     * when an image has no [PromptEntity.generatedMotionEffect] yet (older
+     * projects, or before SmartSequenceGenerator has run). */
     val motionEffect: String = MotionEffect.ZOOM_IN,
+    /** Which pool [SmartSequenceGenerator] picks per-image Motion+Transition
+     * from — see [VideoStyle]. */
+    val videoStyle: String = VideoStyle.MIXED_PRO,
+    /** Seed for [SmartSequenceGenerator]'s per-image randomization. Null
+     * until the sequence is generated for the first time, at which point it
+     * is set once (defaults to this project's own id) and never changes —
+     * that's what makes re-rendering the same project always reproduce the
+     * exact same Motion+Transition sequence. */
+    val sequenceSeed: Long? = null,
     /** Real FFmpeg noise-reduction strength on the voice-over, 0-100 (maps
      * to afftdn's nr parameter, 0-97dB). 0 = no noise reduction applied. */
     val noiseReductionPercent: Int = 0,
@@ -226,15 +282,22 @@ object TransitionType {
     const val SQUEEZE = "squeeze"
     const val DIAGONAL = "diagonal"
     const val DISTANCE = "distance"
+    /** A real hard cut — no crossfade at all, the Dynamic style's "Cut"
+     * choice. Handled by RenderEngine as an xfade with a near-zero
+     * duration (FFmpeg's xfade needs a nonzero duration) rather than a
+     * plain concat, so it can stay in the same per-edge xfade chain as
+     * every other transition without a separate code path. */
+    const val CUT = "cut"
 
-    /** Every option, in the order they should be offered — all 20 map to
-     * FFmpeg's built-in `xfade` transition names (see RenderEngine), so
-     * every one of these is a REAL transition, not a fake/simulated one. */
+    /** Every option, in the order they should be offered — all but [CUT]
+     * map to FFmpeg's built-in `xfade` transition names (see
+     * RenderEngine), so every one of these is a REAL transition, not a
+     * fake/simulated one. */
     val ALL = listOf(
         CROSSFADE, SLIDE, SLIDE_RIGHT, SLIDE_UP, SLIDE_DOWN,
         WIPE_LEFT, WIPE_RIGHT, CIRCLE_OPEN, DISSOLVE, PIXELIZE,
         FADE_BLACK, FADE_WHITE, RADIAL, BLUR, SMOOTH_LEFT,
-        SMOOTH_RIGHT, CIRCLE_CLOSE, SQUEEZE, DIAGONAL, DISTANCE
+        SMOOTH_RIGHT, CIRCLE_CLOSE, SQUEEZE, DIAGONAL, DISTANCE, CUT
     )
 
     fun label(value: String): String = when (value) {
@@ -258,6 +321,7 @@ object TransitionType {
         SQUEEZE -> "Squeeze"
         DIAGONAL -> "Diagonal"
         DISTANCE -> "Distance"
+        CUT -> "Cut"
         else -> value
     }
 }
@@ -333,8 +397,41 @@ data class PromptEntity(
     val imagePath: String? = null,
     val errorMessage: String? = null,
     /** User-set duration override for this image, in ms. Null = automatic
-     * (Scale/Hold-Last sync mode decides it, as before). */
-    val manualDurationMs: Long? = null
+     * (Scale/Hold-Last sync mode decides it, as before). Deliberately has
+     * nothing to do with motion/transition — duration is decided by
+     * voice/script timing first, and SmartSequenceGenerator fits its pick
+     * inside whatever duration this image already has. */
+    val manualDurationMs: Long? = null,
+    /** This image's mood, guessed by Cloudflare AI from [promptText] once,
+     * right after the image itself is generated — see [EnergyLevel]. Null
+     * until classified. Used by SmartSequenceGenerator; never re-guessed
+     * once set to CALM/NEUTRAL/ENERGETIC. */
+    val energyLabel: String? = null,
+    /** See [EnergyClassificationStatus]. Starts PENDING as soon as the
+     * image itself is DONE; GenerateImagesWorker retries anything left
+     * PENDING or FAILED on every run, so a dropped/failed AI call always
+     * gets another chance without deleting or re-generating the image. */
+    val energyClassificationStatus: String = EnergyClassificationStatus.PENDING,
+    /** This image's Motion+Transition as picked by SmartSequenceGenerator
+     * — see [MotionEffect]. Null until the sequence has been generated at
+     * least once; cached here (rather than recomputed every time) so
+     * Preview and RenderEngine always show/render the exact same pick, and
+     * so a later single-image regeneration doesn't reshuffle every other
+     * image's effect. Falls back to the project's [AutoGenProjectEntity.motionEffect]
+     * when null. */
+    val generatedMotionEffect: String? = null,
+    /** This image's incoming Transition (the transition that plays as this
+     * image enters, i.e. the edge between the previous image and this
+     * one — meaningless for the first image) as picked by
+     * SmartSequenceGenerator — see [TransitionType]. Same caching/fallback
+     * rules as [generatedMotionEffect]. */
+    val generatedTransitionType: String? = null,
+    /** Per-image Auto/Manual toggle. Null/false = Auto — SmartSequenceGenerator
+     * is free to (re)pick this image's [generatedMotionEffect] /
+     * [generatedTransitionType] on every sequence generation. true = Manual —
+     * the user chose these two values themselves in the editor; the generator
+     * always skips this image and leaves them exactly as they are. */
+    val isManualEffect: Boolean? = false
 )
 
 // ============================================================================

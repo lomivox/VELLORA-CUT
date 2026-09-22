@@ -131,10 +131,12 @@ object ShortsMetadataGenerator {
         // succeed. A genuinely bad prompt/account will still fail the same
         // way every time and correctly surface its real error at the end.
         outer@ for (account in accounts) {
+            var succeeded = false
             repeat(2) { attempt ->
+                if (succeeded) return@repeat
                 try {
                     rawResponse = client.generateText(prompt, account.accountId, account.apiToken)
-                    break@outer
+                    succeeded = true
                 } catch (e: CloudflareApiException) {
                     lastError = e.message
                     if (!e.isQuotaExceeded && attempt == 0) kotlinx.coroutines.delay(1500)
@@ -143,6 +145,7 @@ object ShortsMetadataGenerator {
                     if (attempt == 0) kotlinx.coroutines.delay(1500)
                 }
             }
+            if (succeeded) break@outer
         }
         if (rawResponse.isNullOrBlank()) {
             return@withContext Result.failure(Exception(lastError ?: "Title/Description generate nahi ho saki"))

@@ -241,8 +241,14 @@ object RenderEngine {
             val motionEffect = motionEffects[i]
             val frames = max(2, (inputLengths[i] * FPS).roundToInt())
             if (motionEffect == MotionEffect.STATIC) {
+                // fps=$FPS here is required, not cosmetic: every zoompan branch below
+                // sets fps=$FPS explicitly, but a plain image input otherwise stays at
+                // its native default framerate. Chaining xfade between a STATIC segment
+                // and a zoompan segment with mismatched timebases fails the whole filter
+                // graph ("Failed to configure output pad") and the export silently
+                // produces nothing. Verified against real ffmpeg.
                 parts += "[$i:v]scale=${width}:${height}:force_original_aspect_ratio=increase," +
-                    "crop=${width}:${height},setsar=1[seg$i]"
+                    "crop=${width}:${height},fps=$FPS,setsar=1[seg$i]"
                 continue
             }
             val zoompan = zoompanFor(motionEffect, frames, width, height)

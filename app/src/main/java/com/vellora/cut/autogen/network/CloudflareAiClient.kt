@@ -332,7 +332,12 @@ class CloudflareAiClient {
         accountId: String,
         apiToken: String
     ): String {
-        val model = "@cf/qwen/qwen3.8-27b"
+        // Was "@cf/qwen/qwen3.8-27b" — a large 27B reasoning model, much slower than
+        // everything else in this file, and prone to exceeding the per-call network
+        // timeout across every pooled account before finally failing. Back to the same
+        // small/fast model used elsewhere here (generateImagePromptFromNarration,
+        // classifyImageEnergy) since the prompt itself is already detailed/specific.
+        val model = "@cf/meta/llama-3.1-8b-instruct"
         val url = "https://api.cloudflare.com/client/v4/accounts/$accountId/ai/run/$model"
 
         val messages = org.json.JSONArray().put(

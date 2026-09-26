@@ -88,8 +88,15 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
             } else {
                 com.vellora.cut.autogen.render.VideoReshaper.Target.LONG
             }
+            // reshapeIfNeeded used to have no fallback here — one failed encode (device
+            // encoder hiccup, odd source file, etc.) hard-failed the whole upload with
+            // no retry path, unlike "Auto" below which always has something to fall back
+            // to. Now it falls back the same way: try normalize (plain re-encode, no
+            // crop/trim) and only fall back to the untouched original if that also fails,
+            // so the person still gets an upload instead of a dead end.
             com.vellora.cut.autogen.render.VideoReshaper.reshapeIfNeeded(context, videoFile, target)
-                ?: return entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = "Video ko Short/Long shape mein badalte waqt fail ho gaya")
+                ?: com.vellora.cut.autogen.render.VideoReshaper.normalize(context, videoFile)
+                ?: videoFile
         } else {
             // "Auto" used to mean "send the original bytes untouched" — but
             // an original file with any unusual codec/container quirk can

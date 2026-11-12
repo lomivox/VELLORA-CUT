@@ -1,7 +1,5 @@
 package com.vellora.cut.autogen.ui
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -19,10 +17,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.vellora.cut.autogen.data.CloudflareAccount
 import com.vellora.cut.autogen.data.SecureCredentialStore
-import com.vellora.cut.autogen.network.YouTubeAuthManager
 import com.vellora.cut.update.UpdateCard
 import com.vellora.cut.ui.theme.*
 import java.util.UUID
@@ -65,23 +61,6 @@ fun SettingsScreen(onBack: () -> Unit) {
     var youtubeApiKey by remember { mutableStateOf(store.youtubeApiKey) }
     var channelName by remember { mutableStateOf(store.channelName) }
     var channelSavedMessage by remember { mutableStateOf<String?>(null) }
-
-    var signedInAccountEmail by remember {
-        mutableStateOf(YouTubeAuthManager.getCurrentAccount(context)?.email)
-    }
-    var signInError by remember { mutableStateOf<String?>(null) }
-    val signInLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
-        try {
-            val account = task.getResult(com.google.android.gms.common.api.ApiException::class.java)
-            signedInAccountEmail = account.email
-            signInError = null
-        } catch (e: com.google.android.gms.common.api.ApiException) {
-            signInError = "Sign-in fail hui (code: ${e.statusCode})"
-        }
-    }
 
     Scaffold(containerColor = BackgroundDark) { padding ->
         Column(
@@ -233,40 +212,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 }
 
                 Spacer(modifier = Modifier.height(28.dp))
-                Text(text = "YouTube Account (Auto-Upload)", color = CyanPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "جس Gmail پر آپ کا YouTube channel ہے اُسی سے sign-in کریں — auto-upload ہمیشہ اسی ایک fix اکاؤنٹ میں ہوگا۔",
-                    color = TextSecondary,
-                    fontSize = 12.sp
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                if (signedInAccountEmail != null) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(text = "✅ Connected: $signedInAccountEmail", color = TextPrimary, fontSize = 13.sp)
-                        TextButton(onClick = {
-                            YouTubeAuthManager.signOut(context) { signedInAccountEmail = null }
-                        }) {
-                            Text(text = "Disconnect", color = Color(0xFFFF6B6B), fontSize = 12.sp)
-                        }
-                    }
-                } else {
-                    Button(
-                        onClick = { signInLauncher.launch(YouTubeAuthManager.signInIntent(context)) },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
-                    ) {
-                        Text(text = "Connect YouTube Account", color = BackgroundDark, fontWeight = FontWeight.Bold)
-                    }
-                }
-                signInError?.let {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(text = "⚠ $it", color = Color(0xFFFF6B6B), fontSize = 12.sp)
-                }
+                YouTubeAccountsSection()
 
                 Spacer(modifier = Modifier.height(20.dp))
             }

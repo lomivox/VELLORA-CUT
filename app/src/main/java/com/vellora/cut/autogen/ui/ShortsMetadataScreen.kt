@@ -61,21 +61,47 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
     var showHistory by remember { mutableStateOf(false) }
     val credStore = remember { SecureCredentialStore(context) }
     var autoUploadEnabled by remember { mutableStateOf(credStore.autoUploadEnabled) }
+    var renameToTitle by remember { mutableStateOf(credStore.renameVideoToTitle) }
+    // false = SEO Auto (video is analysed, AI writes title/description/tags); true = Manual (you write them).
+    var manualMode by remember { mutableStateOf(false) }
+    var manualTitle by remember { mutableStateOf("") }
+    var manualDescription by remember { mutableStateOf("") }
+    var manualTags by remember { mutableStateOf("") }
+    // The saved draft that a video is being attached to (draft made earlier, video picked now).
+    var attachTarget by remember { mutableStateOf<ShortMetadataEntity?>(null) }
+    // The connected YouTube account (channel) this upload goes to; picked right on this screen.
+    var uploadAccountEmail by remember { mutableStateOf(com.vellora.cut.autogen.network.YouTubeAccounts.selectedEmail(context)) }
 
-    suspend fun uploadToYouTube(entity: ShortMetadataEntity): ShortMetadataEntity {
+    suspend fun uploadToYouTube(entity0: ShortMetadataEntity): ShortMetadataEntity {
+        var entity = entity0
         if (entity.videoUri.isBlank()) {
             return entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = "Is entry ke sath koi video nahi hai (sirf topic se bana tha) — upload nahi ho sakti")
         }
-        val account = YouTubeAuthManager.getCurrentAccount(context)
-            ?: return entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = "Pehle Settings mein YouTube account connect karein")
+        val accountEmail = uploadAccountEmail
+            ?: com.vellora.cut.autogen.network.YouTubeAccounts.selectedEmail(context)
+            ?: return entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = "Pehle koi YouTube account connect karein (neeche \"Connect Account\" ya Settings)")
 
-        val tokenResult = YouTubeAuthManager.getFreshAccessToken(context, account)
+        val tokenResult = YouTubeAuthManager.getFreshAccessToken(context, accountEmail)
         val accessToken = when (tokenResult) {
             is YouTubeAuthManager.TokenResult.Success -> tokenResult.accessToken
             is YouTubeAuthManager.TokenResult.NeedsUserAction ->
-                return entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = "YouTube permission dobara consent chahti hai — Settings mein Disconnect kar ke dobara Connect karein")
+                return entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = "$accountEmail ki YouTube permission dobara chahiye — Settings mein is account ko Remove kar ke dobara jodein")
             is YouTubeAuthManager.TokenResult.Error ->
                 return entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = tokenResult.message)
+        }
+
+        // Before uploading, rename the video after its generated title (like renaming it in the Gallery),
+        // so the file itself says what the video is about. Best-effort: if the phone refuses, upload goes on.
+        val newBase = if (renameToTitle) com.vellora.cut.autogen.render.VideoRenamer.fileNameFromTitle(entity.generatedTitle.orEmpty()) else null
+        if (newBase != null) {
+            val ext = entity.videoFileName.substringAfterLast('.', "").lowercase().takeIf { it.length in 2..4 } ?: "mp4"
+            val newName = "$newBase.$ext"
+            if (!entity.videoFileName.equals(newName, ignoreCase = true)) {
+                val newUri = withContext(Dispatchers.IO) {
+                    com.vellora.cut.autogen.render.VideoRenamer.renameInGallery(context, entity.videoUri, newName)
+                }
+                if (newUri != null) entity = entity.copy(videoUri = newUri.toString(), videoFileName = newName)
+            }
         }
 
         val videoFile = withContext(Dispatchers.IO) {
@@ -118,10 +144,14 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
             }
         }
 
+        val uploadFile = if (newBase != null) {
+            withContext(Dispatchers.IO) { com.vellora.cut.autogen.render.VideoRenamer.renameLocalCopy(context, reshapedFile, newBase) }
+        } else reshapedFile
+
         val uploadResult = withContext(Dispatchers.IO) {
             YouTubeUploader.upload(
                 accessToken = accessToken,
-                videoFile = reshapedFile,
+                videoFile = uploadFile,
                 title = entity.generatedTitle ?: entity.videoFileName,
                 description = fullDescription,
                 tags = tags
@@ -132,6 +162,24 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
             onSuccess = { r -> entity.copy(status = ShortMetadataStatus.UPLOADED, youtubeVideoUrl = r.videoUrl) },
             onFailure = { e -> entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = "Upload fail: ${e.message}") }
         )
+    }
+
+    /** Uploads [entity] (its title/description/tags as they are now) and saves the result. Keeps the process alive while it runs. */
+    suspend fun uploadAndSave(entity: ShortMetadataEntity) {
+        isWorking = true
+        statusText = "uploading"
+        com.vellora.cut.autogen.render.RenderKeepAliveService.start(context, "YouTube par upload ho rahi hai…")
+        try {
+            var updated = entity.copy(status = ShortMetadataStatus.UPLOADING, errorMessage = null)
+            activeProject = updated
+            updated = uploadToYouTube(updated)
+            dao.update(updated)
+            activeProject = updated
+            if (updated.status == ShortMetadataStatus.ERROR) errorMessage = updated.errorMessage
+        } finally {
+            isWorking = false
+            com.vellora.cut.autogen.render.RenderKeepAliveService.stop(context)
+        }
     }
 
     suspend fun runGenerationFlow(entity: ShortMetadataEntity, videoUriForGen: String?, manualTopic: String?) {
@@ -211,6 +259,29 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
         errorMessage = null
         classificationHint = predictYouTubeClassification(context, uri)
         val fileName = queryDisplayName(context, uri) ?: "video"
+        if (manualMode) {
+            // Manual: the person's own title/description/tags go straight to YouTube — no AI step.
+            val title = manualTitle.trim()
+            if (title.isBlank()) { errorMessage = "Pehle apna title likhein"; return@rememberLauncherForActivityResult }
+            scope.launch {
+                var entity = ShortMetadataEntity(
+                    videoUri = uri.toString(),
+                    videoFileName = fileName,
+                    createdAt = System.currentTimeMillis(),
+                    status = ShortMetadataStatus.DONE,
+                    generatedTitle = title,
+                    generatedDescription = manualDescription.trim(),
+                    generatedTags = manualTags.trim(),
+                    generatedHashtags = "",
+                    uploadTarget = uploadTarget
+                )
+                val id = dao.insert(entity)
+                entity = entity.copy(id = id)
+                activeProject = entity
+                uploadAndSave(entity)
+            }
+            return@rememberLauncherForActivityResult
+        }
         scope.launch {
             var entity = ShortMetadataEntity(
                 videoUri = uri.toString(),
@@ -223,6 +294,53 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
             entity = entity.copy(id = id)
             activeProject = entity
             runGenerationFlow(entity, videoUriForGen = uri.toString(), manualTopic = null)
+        }
+    }
+
+    // A saved draft (title/description/tags made earlier) gets its video now, then uploads with that exact metadata.
+    val attachPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        val target = attachTarget
+        attachTarget = null
+        if (uri == null || target == null) return@rememberLauncherForActivityResult
+        try {
+            context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        } catch (e: SecurityException) { /* fine for this session */ }
+        errorMessage = null
+        classificationHint = predictYouTubeClassification(context, uri)
+        val attached = target.copy(
+            videoUri = uri.toString(),
+            videoFileName = queryDisplayName(context, uri) ?: "video",
+            status = ShortMetadataStatus.DONE,
+            errorMessage = null
+        )
+        scope.launch {
+            dao.update(attached)
+            activeProject = attached
+            uploadAndSave(attached)
+        }
+    }
+
+    fun saveManualDraft() {
+        val title = manualTitle.trim()
+        if (title.isBlank()) { errorMessage = "Pehle apna title likhein"; return }
+        errorMessage = null
+        scope.launch {
+            var entity = ShortMetadataEntity(
+                videoUri = "",
+                videoFileName = title.take(40),
+                createdAt = System.currentTimeMillis(),
+                status = ShortMetadataStatus.DONE,
+                transcript = title,
+                generatedTitle = title,
+                generatedDescription = manualDescription.trim(),
+                generatedTags = manualTags.trim(),
+                generatedHashtags = ""
+            )
+            val id = dao.insert(entity)
+            entity = entity.copy(id = id)
+            activeProject = entity
         }
     }
 
@@ -249,15 +367,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
         scope.launch {
             if (entity.generatedTitle != null) {
                 // Metadata already exists — only the upload step failed.
-                isWorking = true
-                statusText = "uploading"
-                var updated = entity.copy(status = ShortMetadataStatus.UPLOADING, errorMessage = null)
-                activeProject = updated
-                updated = uploadToYouTube(updated)
-                dao.update(updated)
-                activeProject = updated
-                isWorking = false
-                if (updated.status == ShortMetadataStatus.ERROR) errorMessage = updated.errorMessage
+                uploadAndSave(entity)
             } else if (entity.videoUri.isNotBlank()) {
                 runGenerationFlow(entity, videoUriForGen = entity.videoUri, manualTopic = null)
             } else {
@@ -335,6 +445,69 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
 
         Spacer(modifier = Modifier.height(12.dp))
 
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            listOf(false to "🔍 SEO Auto", true to "✍️ Manual Title").forEach { (value, label) ->
+                val selected = manualMode == value
+                Surface(
+                    onClick = { manualMode = value; errorMessage = null },
+                    shape = RoundedCornerShape(14.dp),
+                    color = if (selected) CyanPrimary else SurfaceVariant,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = label,
+                        color = if (selected) BackgroundDark else TextPrimary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        modifier = Modifier.padding(vertical = 12.dp)
+                    )
+                }
+            }
+        }
+        Text(
+            text = if (manualMode) "Aap khud title/description/tags likhte hain — video bina AI ke usi par upload hogi."
+                   else "Video sun kar transcript + YouTube keywords se SEO Title/Description/Tags khud banenge.",
+            color = TextSecondary,
+            fontSize = 11.sp,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+
+        if (manualMode) {
+            val fc = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary, focusedBorderColor = CyanPrimary
+            )
+            OutlinedTextField(
+                value = manualTitle, onValueChange = { manualTitle = it },
+                label = { Text("Title (zaroori)") }, singleLine = true,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), colors = fc
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedTextField(
+                value = manualDescription, onValueChange = { manualDescription = it },
+                label = { Text("Description (optional)") }, minLines = 3,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), colors = fc
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedTextField(
+                value = manualTags, onValueChange = { manualTags = it },
+                label = { Text("Tags (comma se alag, optional)") },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), colors = fc
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = { saveManualDraft() },
+                enabled = !isWorking && manualTitle.isNotBlank(),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+            ) {
+                Text(text = "💾 Sirf Draft save karein (video baad mein)", color = TextPrimary)
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        } else {
         Text(
             text = "Language",
             color = TextSecondary,
@@ -390,6 +563,39 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
 
         Spacer(modifier = Modifier.height(12.dp))
 
+        }
+
+        UploadAccountSelector(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            onSelected = { uploadAccountEmail = it }
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = "Video ka naam title par rakhein", color = TextPrimary, fontSize = 13.sp)
+                Text(
+                    text = "Upload se pehle video ka naam (gallery mein) title ke mutabiq badal jayega",
+                    color = TextSecondary,
+                    fontSize = 10.sp
+                )
+            }
+            Switch(
+                checked = renameToTitle,
+                onCheckedChange = { renameToTitle = it; credStore.renameVideoToTitle = it },
+                colors = SwitchDefaults.colors(checkedTrackColor = CyanPrimary)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
         Text(
             text = "Upload Shape",
             color = TextSecondary,
@@ -435,13 +641,13 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
 
         Button(
             onClick = { videoPicker.launch("video/*") },
-            enabled = !isWorking,
+            enabled = !isWorking && (!manualMode || manualTitle.isNotBlank()),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp),
             colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
         ) {
-            Text(text = "📁 Gallery se Video Chunein", color = BackgroundDark, fontWeight = FontWeight.Bold)
+            Text(text = if (manualMode) "📁 Video chunein aur Upload karein" else "📁 Gallery se Video Chunein", color = BackgroundDark, fontWeight = FontWeight.Bold)
         }
 
         classificationHint?.let {
@@ -453,6 +659,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
             )
         }
 
+        if (!manualMode) {
         Spacer(modifier = Modifier.height(14.dp))
         Text(
             text = "Ya apna topic khud likhein (video ke bagair)",
@@ -486,6 +693,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
         ) {
             Text(text = "✍️ Topic se Generate Karein", color = TextPrimary, fontWeight = FontWeight.Bold)
         }
+        }
 
         Spacer(modifier = Modifier.height(12.dp))
 
@@ -511,7 +719,12 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
 
         val shownProject = activeProject
         if (shownProject != null) {
-            ResultCard(shownProject, onRetry = { retry(shownProject) })
+            ResultCard(
+                project = shownProject,
+                onRetry = { retry(shownProject) },
+                onSaveEdit = { edited -> scope.launch { dao.update(edited); activeProject = edited } },
+                onAttachVideo = { attachTarget = it; attachPicker.launch("video/*") }
+            )
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -529,8 +742,18 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun ResultCard(project: ShortMetadataEntity, onRetry: () -> Unit) {
+private fun ResultCard(
+    project: ShortMetadataEntity,
+    onRetry: () -> Unit,
+    onSaveEdit: (ShortMetadataEntity) -> Unit,
+    onAttachVideo: (ShortMetadataEntity) -> Unit
+) {
     val context = LocalContext.current
+    var editing by remember(project.id) { mutableStateOf(false) }
+    var editTitle by remember(project.id, project.generatedTitle) { mutableStateOf(project.generatedTitle.orEmpty()) }
+    var editDesc by remember(project.id, project.generatedDescription) { mutableStateOf(project.generatedDescription.orEmpty()) }
+    var editTags by remember(project.id, project.generatedTags) { mutableStateOf(project.generatedTags.orEmpty()) }
+    val canEdit = project.youtubeVideoUrl == null && project.status != ShortMetadataStatus.UPLOADING
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -568,6 +791,47 @@ private fun ResultCard(project: ShortMetadataEntity, onRetry: () -> Unit) {
         Spacer(modifier = Modifier.height(10.dp))
         CopyableField(context, "Hashtags", project.generatedHashtags.orEmpty())
 
+        if (canEdit) {
+            Spacer(modifier = Modifier.height(10.dp))
+            if (!editing) {
+                OutlinedButton(onClick = { editing = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text(text = "✏️ Title / Description / Tags khud theek karein", color = TextPrimary, fontSize = 12.sp)
+                }
+            } else {
+                val fc = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary, focusedBorderColor = CyanPrimary
+                )
+                OutlinedTextField(
+                    value = editTitle, onValueChange = { editTitle = it },
+                    label = { Text("Title") }, modifier = Modifier.fillMaxWidth(), colors = fc
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = editDesc, onValueChange = { editDesc = it },
+                    label = { Text("Description") }, minLines = 3, modifier = Modifier.fillMaxWidth(), colors = fc
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = editTags, onValueChange = { editTags = it },
+                    label = { Text("Tags (comma se alag)") }, modifier = Modifier.fillMaxWidth(), colors = fc
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = {
+                            if (editTitle.isNotBlank()) {
+                                onSaveEdit(project.copy(generatedTitle = editTitle.trim(), generatedDescription = editDesc.trim(), generatedTags = editTags.trim()))
+                                editing = false
+                            }
+                        },
+                        enabled = editTitle.isNotBlank(),
+                        colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
+                    ) { Text(text = "Save", color = BackgroundDark, fontWeight = FontWeight.Bold) }
+                    OutlinedButton(onClick = { editing = false }) { Text(text = "Cancel", color = TextSecondary) }
+                }
+            }
+        }
+
         if (project.youtubeVideoUrl != null) {
             Spacer(modifier = Modifier.height(12.dp))
             Text(text = "✅ YouTube پر upload ہو گئی", color = CyanPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
@@ -579,6 +843,15 @@ private fun ResultCard(project: ShortMetadataEntity, onRetry: () -> Unit) {
                 colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
             ) {
                 Text(text = "⬆️ Upload Now", color = BackgroundDark, fontWeight = FontWeight.Bold)
+            }
+        } else if (project.videoUri.isBlank() && project.status != ShortMetadataStatus.UPLOADING) {
+            // A draft with no video yet: pick the video now and it uploads with exactly this title/description/tags.
+            Spacer(modifier = Modifier.height(12.dp))
+            Button(
+                onClick = { onAttachVideo(project) },
+                colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
+            ) {
+                Text(text = "📁 Video chunein aur isi title par Upload karein", color = BackgroundDark, fontWeight = FontWeight.Bold)
             }
         }
     }

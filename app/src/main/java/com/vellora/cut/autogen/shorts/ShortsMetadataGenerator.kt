@@ -116,7 +116,9 @@ object ShortsMetadataGenerator {
 
         // ---- Step 4: AI generation grounded in transcript + real keywords ----
         onStatusChange("generating")
-        val channelName = SecureCredentialStore(context).channelName
+        // The channel the upload will go to (read from YouTube) wins; the name typed in Settings is the fallback.
+        val channelName = com.vellora.cut.autogen.network.YouTubeAccounts.selected(context)?.channelTitle?.takeIf { it.isNotBlank() }
+            ?: SecureCredentialStore(context).channelName
         val prompt = buildPrompt(transcript, keywords, competitorTitles, language, channelName)
         var rawResponse: String? = null
         var lastError: String? = null

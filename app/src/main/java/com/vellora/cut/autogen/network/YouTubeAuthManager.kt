@@ -11,14 +11,16 @@ import com.google.android.gms.auth.api.signin.GoogleSignInClient
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.Scope
 import kotlinx.coroutines.Dispatchers
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.withContext
 
 /**
- * One fixed YouTube account for the whole app — sign in once, Google Play
- * Services remembers it across restarts (same as any other app using
- * Google Sign-In). [getFreshAccessToken] always returns a currently-valid
- * token for that same account; nothing here ever asks "which account" more
- * than once.
+ * Google sign-in for YouTube upload. Any number of accounts can be connected
+ * (see [YouTubeAccounts]); [getFreshAccessToken] returns a currently-valid
+ * token for whichever account (email) is asked for.
  */
 object YouTubeAuthManager {
 
@@ -57,12 +59,28 @@ object YouTubeAuthManager {
         data class Error(val message: String) : TokenResult()
     }
 
+    /**
+     * Opens Google's account chooser (with "Add another account") so a DIFFERENT Gmail can be picked.
+     * Signing out of the cached sign-in first is what makes the chooser appear; accounts already
+     * connected keep working, because only the cached "last account" is cleared, not their permission.
+     */
+    fun chooseAccount(context: Context, launch: (Intent) -> Unit) {
+        val client = getClient(context)
+        client.signOut().addOnCompleteListener { launch(client.signInIntent) }
+    }
+
     /** Blocking call (GoogleAuthUtil.getToken) — always call from a
      * background dispatcher, which this already does internally. */
-    suspend fun getFreshAccessToken(context: Context, account: GoogleSignInAccount): TokenResult =
+    suspend fun getFreshAccessToken(context: Context, account: GoogleSignInAccount): TokenResult {
+        val email = account.email
+            ?: return TokenResult.Error("Account handle missing — dobara sign-in karein")
+        return getFreshAccessToken(context, email)
+    }
+
+    /** A token for any connected account, identified by its email. */
+    suspend fun getFreshAccessToken(context: Context, email: String): TokenResult =
         withContext(Dispatchers.IO) {
-            val androidAccount: Account = account.account
-                ?: return@withContext TokenResult.Error("Account handle missing — dobara sign-in karein")
+            val androidAccount = Account(email, "com.google")
             try {
                 val token = GoogleAuthUtil.getToken(
                     context,
@@ -83,4 +101,34 @@ object YouTubeAuthManager {
                 TokenResult.Error(e.message ?: "Token nahi mil saka")
             }
         }
+
+    private val http = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .build()
+
+    /** The name of the YouTube channel this token belongs to (null if it could not be read). */
+    suspend fun fetchChannelTitle(accessToken: String): String? = withContext(Dispatchers.IO) {
+        try {
+            val request = Request.Builder()
+                .url("https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true")
+                .addHeader("Authorization", "Bearer $accessToken")
+                .build()
+            http.newCall(request).execute().use { r ->
+                if (!r.isSuccessful) return@withContext null
+                val items = JSONObject(r.body?.string() ?: return@withContext null).optJSONArray("items")
+                items?.optJSONObject(0)?.optJSONObject("snippet")?.optString("title")?.takeIf { it.isNotBlank() }
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /** Reads the channel name for a connected account and stores it (used right after connecting). */
+    suspend fun refreshChannelTitle(context: Context, email: String) {
+        val t = getFreshAccessToken(context, email)
+        if (t is TokenResult.Success) {
+            fetchChannelTitle(t.accessToken)?.let { YouTubeAccounts.setChannelTitle(context, email, it) }
+        }
+    }
 }

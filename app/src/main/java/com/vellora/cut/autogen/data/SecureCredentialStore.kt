@@ -97,6 +97,11 @@ class SecureCredentialStore(context: Context) {
         get() = prefs.getBoolean(KEY_AUTO_UPLOAD, false)
         set(value) = prefs.edit().putBoolean(KEY_AUTO_UPLOAD, value).apply()
 
+    /** Before upload, rename the video file after its title (like renaming it in the Gallery). On by default. */
+    var renameVideoToTitle: Boolean
+        get() = prefs.getBoolean(KEY_RENAME_TO_TITLE, true)
+        set(value) = prefs.edit().putBoolean(KEY_RENAME_TO_TITLE, value).apply()
+
     fun hasCredentials(): Boolean = accounts.isNotEmpty()
 
     companion object {
@@ -107,6 +112,7 @@ class SecureCredentialStore(context: Context) {
         private const val KEY_YOUTUBE_API_KEY = "youtube_data_api_key"
         private const val KEY_CHANNEL_NAME = "channel_name"
         private const val KEY_AUTO_UPLOAD = "youtube_auto_upload_enabled"
+        private const val KEY_RENAME_TO_TITLE = "rename_video_to_title"
         const val DEFAULT_MODEL = "@cf/black-forest-labs/flux-1-schnell"
     }
 }

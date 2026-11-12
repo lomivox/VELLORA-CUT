@@ -8,7 +8,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
+import android.content.Intent
 import com.vellora.cut.autogen.ui.AutoGenHomeScreen
+import com.vellora.cut.update.AppUpdater
 import com.vellora.cut.ui.theme.VelloraTheme
 
 class MainActivity : ComponentActivity() {
@@ -32,6 +34,12 @@ class MainActivity : ComponentActivity() {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
 
+        // In-app update: read what was found last time, check GitHub (at most every 10 min), and keep a 3-hourly background check.
+        AppUpdater.load(this)
+        AppUpdater.schedule(this)
+        AppUpdater.checkAsync(this)
+        handleUpdateIntent(intent)
+
         setContent {
             VelloraTheme {
                 // The old manual Editor (and the Hub screen that chose between
@@ -47,6 +55,19 @@ class MainActivity : ComponentActivity() {
                 // everything else from the old Editor was deleted.
                 AutoGenHomeScreen()
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleUpdateIntent(intent)
+    }
+
+    /** Tapping the "new version" notification opens Settings (where the Update card is). */
+    private fun handleUpdateIntent(intent: Intent?) {
+        if (intent?.getStringExtra(AppUpdater.EXTRA_OPEN) == AppUpdater.OPEN_UPDATE) {
+            AppUpdater.openRequest = true
         }
     }
 }

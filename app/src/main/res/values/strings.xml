@@ -1,3 +1,38 @@
 <resources>
     <string name="app_name">VELLORA CUT</string>
+
+    <!-- In-app update (ported from Dukan Khata) -->
+    <string name="update_title">App Update</string>
+    <string name="update_installed">Installed version: %1$s</string>
+    <string name="update_latest">You have the latest version.</string>
+    <string name="update_check">Check for update</string>
+    <string name="update_checking">Checking…</string>
+    <string name="update_no_internet">No internet. Try again later.</string>
+    <string name="update_check_failed">Could not check right now. Try again later.</string>
+    <string name="update_available">New version %1$s is available</string>
+    <string name="update_downloading">Downloading… %1$d%%</string>
+    <string name="update_ready">Downloaded completely and checked. Tap Install when you are ready. (The file is kept, so you can install it later.)</string>
+    <string name="update_install">Install now</string>
+    <string name="update_now">Update app</string>
+    <string name="update_ignore">Ignore</string>
+    <string name="update_ignored">You chose to ignore this version.</string>
+    <string name="update_failed">Download failed. Check the internet and tap Update again.</string>
+    <string name="update_bad_file">The downloaded file was not valid. Please download it again.</string>
+    <string name="update_allow_hint">Allow installing from this app, then come back and tap Install.</string>
+    <string name="update_notif_channel">App updates</string>
+    <string name="update_notif_title">VELLORA CUT update</string>
+    <string name="update_notif_text">New version %1$s is ready. Tap to update.</string>
+    <string name="update_wait_wifi">Waiting for Wi-Fi…</string>
+    <string name="update_wait_network">Waiting for internet…</string>
+    <string name="update_wait_retry">Connection lost. Trying again…</string>
+    <string name="update_starting">Starting the download…</string>
+    <string name="update_size_of">%1$s MB of %2$s MB</string>
+    <string name="update_cancel">Cancel download</string>
+    <string name="update_keep_going">You can leave this page. The download carries on in the background.</string>
+    <string name="update_fail_space">Not enough free space on the phone.</string>
+    <string name="update_fail_net">The connection broke during the download.</string>
+    <string name="update_fail_bad">The file arrived damaged or was not the right app. It was thrown away.</string>
+    <string name="update_fail_server">The server did not give the file (error %1$d).</string>
+    <string name="update_fail_other">Download error (code %1$d).</string>
+    <string name="update_whats_new">What\'s new in this update</string>
 </resources>

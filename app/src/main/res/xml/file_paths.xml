@@ -2,4 +2,6 @@
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Matches context.getExternalFilesDir(null) + "/renders" used by RenderEngine -->
     <external-files-path name="renders" path="renders/" />
+    <!-- The downloaded app update (APK) waits here until it is installed. -->
+    <external-files-path name="updates" path="Download/" />
 </paths>

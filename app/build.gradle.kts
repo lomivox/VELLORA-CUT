@@ -29,8 +29,9 @@ android {
         applicationId = "com.vellora.cut"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0-phase0"
+        // CI passes a number that only ever goes up (run number), so every build installs as an update.
+        versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
+        versionName = System.getenv("VERSION_NAME") ?: "0.1.0-phase0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

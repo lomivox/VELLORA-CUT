@@ -8,6 +8,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.vellora.cut.data.AppDatabase
+import com.vellora.cut.update.AppUpdater
 import com.vellora.cut.ui.theme.BackgroundDark
 
 /** Screens reachable from within the Auto Generator project (own back-stack). */
@@ -32,6 +33,14 @@ fun AutoGenHomeScreen() {
     val context = LocalContext.current
     val db = remember { AppDatabase.getInstance(context) }
     var screen by remember { mutableStateOf<AutoGenScreen>(AutoGenScreen.ProjectList) }
+
+    // Tapping the "new version" notification opens Settings, where the Update card is.
+    LaunchedEffect(AppUpdater.openRequest) {
+        if (AppUpdater.openRequest) {
+            screen = AutoGenScreen.Settings
+            AppUpdater.openRequest = false
+        }
+    }
 
     // ProjectList is now the app's true root — back-button handling here
     // is disabled at that point, so the system default (exit app) applies.

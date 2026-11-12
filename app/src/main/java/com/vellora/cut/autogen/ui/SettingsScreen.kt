@@ -23,6 +23,7 @@ import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.vellora.cut.autogen.data.CloudflareAccount
 import com.vellora.cut.autogen.data.SecureCredentialStore
 import com.vellora.cut.autogen.network.YouTubeAuthManager
+import com.vellora.cut.update.UpdateCard
 import com.vellora.cut.ui.theme.*
 import java.util.UUID
 
@@ -110,6 +111,9 @@ fun SettingsScreen(onBack: () -> Unit) {
                     .weight(1f)
                     .verticalScroll(rememberScrollState())
             ) {
+                UpdateCard()
+                Spacer(modifier = Modifier.height(24.dp))
+
                 rows.forEachIndexed { index, row ->
                     key(row.key) {
                         AccountCard(

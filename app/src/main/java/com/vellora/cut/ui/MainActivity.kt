@@ -9,7 +9,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
 import android.content.Intent
+import com.vellora.cut.BuildConfig
 import com.vellora.cut.autogen.ui.AutoGenHomeScreen
+import com.vellora.cut.autogen.ui.YtiqHomeScreen
 import com.vellora.cut.update.AppUpdater
 import com.vellora.cut.ui.theme.VelloraTheme
 
@@ -53,7 +55,8 @@ class MainActivity : ComponentActivity() {
                 // autogen/ui/reference/EditorControlsReference.kt for reuse
                 // inside Auto Generator's own Timeline screen later —
                 // everything else from the old Editor was deleted.
-                AutoGenHomeScreen()
+                // YTIQ = same code, but opens on the YouTube-only home (no video editor).
+                if (BuildConfig.IS_YTIQ) YtiqHomeScreen() else AutoGenHomeScreen()
             }
         }
     }

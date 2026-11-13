@@ -78,12 +78,14 @@ android {
         create("cut") {
             dimension = "app"
             buildConfigField("String", "TAG_PREFIX", "\"v0.1.\"")
+            buildConfigField("boolean", "IS_YTIQ", "false")
             resValue("string", "app_name", "VELLORA CUT")
         }
         create("ytiq") {
             dimension = "app"
             applicationId = "com.vellora.ytiq"
             buildConfigField("String", "TAG_PREFIX", "\"ytiq-v0.1.\"")
+            buildConfigField("boolean", "IS_YTIQ", "true")
             resValue("string", "app_name", "YTIQ")
         }
     }

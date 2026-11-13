@@ -1,10 +1,8 @@
 name: VELLORA CUT CI
 
+# VELLORA CUT is built only by hand for now (Actions tab > VELLORA CUT CI > Run workflow).
+# Pushes are built by the YTIQ workflow only (ytiq-ci.yml).
 on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
   workflow_dispatch:
     inputs:
       publish:
@@ -16,8 +14,8 @@ permissions:
   contents: write
 
 env:
-  # true = publish (every push to main, or a manual run with "publish" ticked). Pull requests never publish.
-  PUBLISH: ${{ github.event_name == 'push' || inputs.publish == true }}
+  # true only when a manual run has "publish" ticked.
+  PUBLISH: ${{ inputs.publish == true }}
   APP_NAME: VelloraCut
   # PUBLIC repository (only APKs live there) that the app's Update button reads.
   # Must match AppUpdater.REPO in app/src/main/java/com/vellora/cut/update/AppUpdater.kt
@@ -58,16 +56,16 @@ jobs:
         env:
           VERSION_CODE: ${{ github.run_number }}
           VERSION_NAME: 0.1.${{ github.run_number }}
-        run: ./gradlew assembleDebug --no-daemon
+        run: ./gradlew assembleCutDebug --no-daemon
 
       - name: Run unit tests
-        run: ./gradlew testDebugUnitTest --no-daemon
+        run: ./gradlew testCutDebugUnitTest --no-daemon
         continue-on-error: true
 
       - name: Name the APK
         run: |
           APK="${APP_NAME}-v0.1.${{ github.run_number }}.apk"
-          cp app/build/outputs/apk/debug/app-debug.apk "$APK"
+          cp app/build/outputs/apk/cut/debug/app-cut-debug.apk "$APK"
           echo "APK_FILE=$APK" >> "$GITHUB_ENV"
 
       # Always kept as a private download (1 day), even when a release is also published.

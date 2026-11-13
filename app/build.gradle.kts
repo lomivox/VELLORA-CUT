@@ -128,7 +128,8 @@ dependencies {
     // rebuilt for the 16KB page-size requirement Google Play now enforces —
     // safe to use even after this app goes on the Play Store.
     // https://github.com/moizhassankh/ffmpeg-kit-android-16KB
-    implementation("com.moizhassan.ffmpeg:ffmpeg-kit-16kb:6.1.1")
+    // Only the VELLORA CUT flavor gets FFmpeg. YTIQ has none (that is the big size saving).
+    "cutImplementation"("com.moizhassan.ffmpeg:ffmpeg-kit-16kb:6.1.1")
 
     // YouTube auto-upload: Google Sign-In + OAuth scope for the YouTube Data
     // API. PINNED to 21.5.1 deliberately — Google's Aug 2026 update

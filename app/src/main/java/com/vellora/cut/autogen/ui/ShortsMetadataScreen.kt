@@ -596,6 +596,8 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
 
         Spacer(modifier = Modifier.height(12.dp))
 
+        // Short/Long reshaping needs FFmpeg, which only VELLORA CUT has; YTIQ uploads the video as it is.
+        if (!com.vellora.cut.BuildConfig.IS_YTIQ) {
         Text(
             text = "Upload Shape",
             color = TextSecondary,
@@ -635,6 +637,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
                 fontSize = 10.sp,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
             )
+        }
         }
 
         Spacer(modifier = Modifier.height(12.dp))

@@ -30,6 +30,8 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.Worker
 import androidx.work.WorkerParameters
+import com.vellora.cut.BuildConfig
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
@@ -123,15 +125,20 @@ object AppUpdater {
     fun fetchBlocking(c: Context): String {
         val app = c.applicationContext
         return try {
-            val conn = URL("https://api.github.com/repos/$REPO/releases/latest").openConnection() as HttpURLConnection
+            val conn = URL("https://api.github.com/repos/$REPO/releases?per_page=30").openConnection() as HttpURLConnection
             try {
                 conn.connectTimeout = 10_000
                 conn.readTimeout = 10_000
                 conn.setRequestProperty("Accept", "application/vnd.github+json")
                 conn.setRequestProperty("User-Agent", "VelloraCut-app")
                 if (conn.responseCode != 200) return "error"
-                val json = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
-                val tag = json.optString("tag_name").removePrefix("v")
+                // One releases repository can hold several apps: only this app's tags count (see TAG_PREFIX in build.gradle.kts).
+                val list = JSONArray(conn.inputStream.bufferedReader().use { it.readText() })
+                val json = (0 until list.length()).map { list.getJSONObject(it) }.firstOrNull {
+                    !it.optBoolean("draft") && !it.optBoolean("prerelease") &&
+                        it.optString("tag_name").startsWith(BuildConfig.TAG_PREFIX)
+                } ?: return "current" // nothing published for this app yet
+                val tag = json.optString("tag_name").substringAfterLast('v')
                 val code = tag.substringAfterLast('.').toLongOrNull() ?: return "error"
                 var url = ""
                 var size = 0L
@@ -451,7 +458,7 @@ object AppUpdater {
         val notification = NotificationCompat.Builder(app, CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
             .setColor(0xFF00C8C8.toInt())
-            .setContentTitle(res.getString(R.string.update_notif_title))
+            .setContentTitle(res.getString(R.string.app_name) + " update")
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setContentIntent(tap)

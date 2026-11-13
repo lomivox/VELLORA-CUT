@@ -67,6 +67,25 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
+    }
+
+    // One code base, two apps installed side by side:
+    //   cut  = VELLORA CUT (video editor + everything)
+    //   ytiq = YTIQ (same code, own app id/name/update line; features get trimmed here later)
+    flavorDimensions += "app"
+    productFlavors {
+        create("cut") {
+            dimension = "app"
+            buildConfigField("String", "TAG_PREFIX", "\"v0.1.\"")
+            resValue("string", "app_name", "VELLORA CUT")
+        }
+        create("ytiq") {
+            dimension = "app"
+            applicationId = "com.vellora.ytiq"
+            buildConfigField("String", "TAG_PREFIX", "\"ytiq-v0.1.\"")
+            resValue("string", "app_name", "YTIQ")
+        }
     }
 
     packaging {

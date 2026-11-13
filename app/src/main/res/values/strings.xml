@@ -1,5 +1,4 @@
 <resources>
-    <string name="app_name">VELLORA CUT</string>
 
     <!-- In-app update (ported from Dukan Khata) -->
     <string name="update_title">App Update</string>
@@ -20,7 +19,6 @@
     <string name="update_bad_file">The downloaded file was not valid. Please download it again.</string>
     <string name="update_allow_hint">Allow installing from this app, then come back and tap Install.</string>
     <string name="update_notif_channel">App updates</string>
-    <string name="update_notif_title">VELLORA CUT update</string>
     <string name="update_notif_text">New version %1$s is ready. Tap to update.</string>
     <string name="update_wait_wifi">Waiting for Wi-Fi…</string>
     <string name="update_wait_network">Waiting for internet…</string>

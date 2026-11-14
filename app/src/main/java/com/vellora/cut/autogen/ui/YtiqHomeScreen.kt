@@ -1,83 +1,115 @@
 package com.vellora.cut.autogen.ui
 
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.vellora.cut.ui.theme.BackgroundDark
-import com.vellora.cut.ui.theme.CyanPrimary
-import com.vellora.cut.ui.theme.SurfaceDark
-import com.vellora.cut.ui.theme.SurfaceVariant
-import com.vellora.cut.ui.theme.TextPrimary
-import com.vellora.cut.ui.theme.TextSecondary
+import androidx.compose.ui.platform.LocalContext
+import com.vellora.cut.autogen.network.YouTubeAccounts
+import com.vellora.cut.autogen.network.YtVideo
 import com.vellora.cut.update.AppUpdater
-
-private enum class YtiqScreen { Home, Seo, Settings }
+import kotlinx.coroutines.launch
 
 /**
- * Start screen of the YTIQ app: no video editor, only the YouTube side
- * (SEO title/description/tags + upload, accounts, settings, update).
+ * Start screen of the YTIQ app (no video editor): Home (channel numbers + latest video),
+ * Videos (all recent uploads), Optimize (SEO + upload) and Settings (accounts, keys, update).
  */
 @Composable
 fun YtiqHomeScreen() {
-    var screen by remember { mutableStateOf(YtiqScreen.Home) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val dash = remember { YtiqDashboard() }
+    var tab by remember { mutableStateOf(YtiqTab.Home) }
+    var accounts by remember { mutableStateOf(YouTubeAccounts.list(context)) }
+    var email by remember { mutableStateOf(YouTubeAccounts.selectedEmail(context)) }
+
+    // Accounts can change in Settings / Optimize; pick that up whenever the tab changes.
+    LaunchedEffect(tab) {
+        YouTubeAccounts.migrateLegacy(context)
+        accounts = YouTubeAccounts.list(context)
+        email = YouTubeAccounts.selectedEmail(context)
+    }
+    LaunchedEffect(email) { dash.load(context, email) }
 
     // Tapping the "new version" notification opens Settings, where the Update card is.
     LaunchedEffect(AppUpdater.openRequest) {
         if (AppUpdater.openRequest) {
-            screen = YtiqScreen.Settings
+            tab = YtiqTab.Settings
             AppUpdater.openRequest = false
         }
     }
 
-    BackHandler(enabled = screen != YtiqScreen.Home) { screen = YtiqScreen.Home }
+    BackHandler(enabled = tab != YtiqTab.Home) { tab = YtiqTab.Home }
 
-    Box(modifier = Modifier.fillMaxSize().background(BackgroundDark)) {
-        when (screen) {
-            YtiqScreen.Home -> Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .systemBarsPadding()
-                    .padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(text = "YTIQ", color = CyanPrimary, fontSize = 32.sp, fontWeight = FontWeight.Bold)
-                Text(text = "YouTube SEO aur upload", color = TextSecondary, fontSize = 13.sp)
-                Spacer(modifier = Modifier.height(12.dp))
-                HomeCard("🔍  SEO + Upload", "Video chunein, title/description/tags banayein ya likhein, aur upload karein") {
-                    screen = YtiqScreen.Seo
-                }
-                HomeCard("⚙️  Settings", "YouTube accounts, API keys, app update") {
-                    screen = YtiqScreen.Settings
-                }
-            }
-            YtiqScreen.Seo -> ShortsMetadataScreen(onBack = { screen = YtiqScreen.Home })
-            YtiqScreen.Settings -> SettingsScreen(onBack = { screen = YtiqScreen.Home })
+    // New version found by the update check (and not ignored): banner on Home + red dot on Settings.
+    val update = AppUpdater.info
+    val updateName = update?.takeIf { it.code != AppUpdater.ignoredCode }?.name
+
+    fun refresh() {
+        scope.launch { dash.load(context, email) }
+    }
+
+    fun openVideo(v: YtVideo) {
+        try {
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=${v.id}"))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        } catch (e: Exception) {
+            // no app can open the link
         }
     }
-}
 
-@Composable
-private fun HomeCard(title: String, subtitle: String, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(16.dp),
-        color = SurfaceDark,
-        border = BorderStroke(1.dp, SurfaceVariant),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(text = title, color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-            Text(text = subtitle, color = TextSecondary, fontSize = 12.sp)
+    Column(modifier = Modifier.fillMaxSize().background(YtBg)) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .consumeWindowInsets(WindowInsets.navigationBars)
+        ) {
+            when (tab) {
+                YtiqTab.Home -> YtiqHomeTab(
+                    dash = dash,
+                    accounts = accounts,
+                    selectedEmail = email,
+                    onSelectAccount = { YouTubeAccounts.select(context, it); email = it },
+                    onOpenSettings = { tab = YtiqTab.Settings },
+                    onRefresh = { refresh() },
+                    onOpenVideo = { openVideo(it) },
+                    updateVersion = updateName
+                )
+                YtiqTab.Videos -> YtiqVideosTab(
+                    dash = dash,
+                    accounts = accounts,
+                    onOpenSettings = { tab = YtiqTab.Settings },
+                    onRefresh = { refresh() },
+                    onOpenVideo = { openVideo(it) }
+                )
+                // These two screens do not handle the status bar themselves, so leave room for it here.
+                YtiqTab.Optimize -> Box(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+                    ShortsMetadataScreen(onBack = { tab = YtiqTab.Home })
+                }
+                YtiqTab.Settings -> Box(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+                    SettingsScreen(onBack = { tab = YtiqTab.Home })
+                }
+            }
         }
+        YtiqBottomBar(selected = tab, onSelect = { tab = it }, settingsBadge = updateName != null)
     }
 }

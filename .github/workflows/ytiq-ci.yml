@@ -104,16 +104,19 @@ jobs:
           body_path: release-notes.md
           files: ${{ env.APK_FILE }}
 
-      - name: Keep only the latest 2 YTIQ releases in the public repository
+      # The releases repository holds exactly ONE thing: the newest YTIQ APK. Every other release/tag is deleted.
+      - name: Keep only this one release (delete every other release and tag)
         if: env.PUBLISH == 'true' && env.HAS_RELEASES_TOKEN == 'true'
         env:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
         run: |
-          gh release list --repo "$RELEASES_REPO" --limit 100 --json tagName \
-            --jq '[.[] | select(.tagName | startswith("ytiq-v0.1."))] | sort_by(.tagName | ltrimstr("ytiq-v0.1.") | tonumber) | reverse | .[2:] | .[].tagName' |
+          KEEP="ytiq-v0.1.${{ github.run_number }}"
+          gh release list --repo "$RELEASES_REPO" --limit 200 --json tagName --jq '.[].tagName' |
           while read -r tag; do
-            echo "Deleting old release $tag"
-            gh release delete "$tag" --repo "$RELEASES_REPO" --cleanup-tag --yes
+            if [ "$tag" != "$KEEP" ]; then
+              echo "Deleting old release $tag"
+              gh release delete "$tag" --repo "$RELEASES_REPO" --cleanup-tag --yes
+            fi
           done
 
       - name: Warn when the in-app update is not set up

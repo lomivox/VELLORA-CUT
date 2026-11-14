@@ -21,7 +21,7 @@ env:
   APP_NAME: YTIQ
   # PUBLIC repository (only APKs live there) that the app's Update button reads.
   # Must match AppUpdater.REPO in app/src/main/java/com/vellora/cut/update/AppUpdater.kt (same repo as VELLORA CUT; tags tell the apps apart)
-  RELEASES_REPO: Velloracut/VELLORA-CUT-releases
+  RELEASES_REPO: lomivox/VELLORA-CUT-releases
   # true when the secret RELEASES_TOKEN exists (a token that may write to RELEASES_REPO).
   HAS_RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN != '' }}
 

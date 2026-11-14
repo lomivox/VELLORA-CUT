@@ -52,7 +52,7 @@ import java.util.concurrent.TimeUnit
  */
 object AppUpdater {
     /** The PUBLIC GitHub repository the APK releases are published in, as "owner/name" (CI publishes there). */
-    const val REPO = "Velloracut/VELLORA-CUT-releases"
+    const val REPO = "lomivox/VELLORA-CUT-releases"
 
     const val EXTRA_OPEN = "open_page"
     const val OPEN_UPDATE = "update"

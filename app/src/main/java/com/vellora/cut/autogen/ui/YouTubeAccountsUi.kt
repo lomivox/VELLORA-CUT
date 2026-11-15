@@ -22,6 +22,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.common.api.ApiException
+import androidx.compose.foundation.text.selection.SelectionContainer
+import com.vellora.cut.autogen.network.AppIdentity
 import com.vellora.cut.autogen.network.YouTubeAccounts
 import com.vellora.cut.autogen.network.YouTubeAuthManager
 import com.vellora.cut.autogen.network.YtAccount
@@ -61,10 +63,21 @@ private fun rememberAddAccount(onError: (String?) -> Unit, onChanged: () -> Unit
             }
         } catch (e: ApiException) {
             // 12501 = the person closed the chooser: not an error worth showing.
-            if (e.statusCode != 12501) onError("Sign-in fail hui (code: ${e.statusCode})")
+            if (e.statusCode != 12501) onError(describeSignInFailure(context, e.statusCode))
         }
     }
     return { YouTubeAuthManager.chooseAccount(context) { launcher.launch(it) } }
+}
+
+/** A readable reason for a failed Google sign-in, plus the exact package + SHA-1 this app presents to Google. */
+private fun describeSignInFailure(context: android.content.Context, code: Int): String {
+    val why = when (code) {
+        10 -> "Google ko is app ka (package + SHA-1) jora Cloud Console mein nahi mila. Neeche wale dono ke sath Android OAuth client banayein."
+        7 -> "Google ne network error bataya. Internet theek ho to sab se mumkin wajah yeh hai ke is app ka (package + SHA-1) Cloud Console mein registered nahi. Neeche wale dono check karein."
+        12500 -> "Google ne sign-in qabool nahi ki. OAuth client aur consent screen (Test users) check karein."
+        else -> "Sign-in nahi hui."
+    }
+    return "Sign-in fail hui (code: $code)\n$why\n" + AppIdentity.summary(context)
 }
 
 @Composable
@@ -141,7 +154,15 @@ fun YouTubeAccountsSection() {
     }
     error?.let {
         Spacer(modifier = Modifier.height(6.dp))
-        Text(text = "⚠ $it", color = Red, fontSize = 12.sp)
+        SelectionContainer { Text(text = "⚠ $it", color = Red, fontSize = 12.sp) }
+    }
+    Spacer(modifier = Modifier.height(6.dp))
+    SelectionContainer {
+        Text(
+            text = "Is app ki pehchan (Google ko yehi jora chahiye):\n" + AppIdentity.summary(context),
+            color = TextSecondary,
+            fontSize = 10.sp
+        )
     }
     Spacer(modifier = Modifier.height(6.dp))
     Text(

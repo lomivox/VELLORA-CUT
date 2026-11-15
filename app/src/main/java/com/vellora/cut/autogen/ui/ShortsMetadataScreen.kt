@@ -60,6 +60,10 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
     var classificationHint by remember { mutableStateOf<String?>(null) }
     var uploadTarget by remember { mutableStateOf(com.vellora.cut.autogen.data.UploadTarget.AUTO) }
     var manualTopicText by remember { mutableStateOf("") }
+    // Optional hint typed BEFORE picking a video: tells the AI what the video is really about (decides keywords + title).
+    var videoHintText by remember { mutableStateOf("") }
+    // The hint each video was generated with, so Retry uses the same hint (it is cleared from the field after use).
+    val hintByEntity = remember { mutableMapOf<Long, String>() }
     var showHistory by remember { mutableStateOf(false) }
     // Back closes the History list first, before leaving this page.
     androidx.activity.compose.BackHandler(enabled = showHistory) { showHistory = false }
@@ -200,10 +204,10 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
         }
     }
 
-    suspend fun runGenerationFlow(entity: ShortMetadataEntity, videoUriForGen: String?, manualTopic: String?) {
+    suspend fun runGenerationFlow(entity: ShortMetadataEntity, videoUriForGen: String?, manualTopic: String?, topicHint: String? = null) {
         val accounts = SecureCredentialStore(context).accounts
-        if (accounts.isEmpty()) {
-            errorMessage = "Pehle Settings mein Cloudflare account add karein"
+        if (accounts.isEmpty() && SecureCredentialStore(context).geminiKeys.isEmpty()) {
+            errorMessage = "Pehle Settings mein Gemini key ya Cloudflare account add karein"
             val updated = entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = errorMessage)
             dao.update(updated)
             activeProject = updated
@@ -218,6 +222,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
                 manualTopic = manualTopic,
                 accounts = accounts,
                 language = outputLanguage,
+                topicHint = topicHint,
                 onStatusChange = { statusText = it }
             )
             isWorking = false
@@ -300,6 +305,8 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
             }
             return@rememberLauncherForActivityResult
         }
+        val hintForThisVideo = videoHintText.trim()
+        videoHintText = "" // used once — never leaks into the next video
         scope.launch {
             var entity = ShortMetadataEntity(
                 videoUri = uri.toString(),
@@ -310,8 +317,9 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
             )
             val id = dao.insert(entity)
             entity = entity.copy(id = id)
+            if (hintForThisVideo.isNotBlank()) hintByEntity[id] = hintForThisVideo
             activeProject = entity
-            runGenerationFlow(entity, videoUriForGen = uri.toString(), manualTopic = null)
+            runGenerationFlow(entity, videoUriForGen = uri.toString(), manualTopic = null, topicHint = hintForThisVideo)
         }
     }
 
@@ -387,7 +395,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
                 // Metadata already exists — only the upload step failed.
                 uploadAndSave(entity)
             } else if (entity.videoUri.isNotBlank()) {
-                runGenerationFlow(entity, videoUriForGen = entity.videoUri, manualTopic = null)
+                runGenerationFlow(entity, videoUriForGen = entity.videoUri, manualTopic = null, topicHint = hintByEntity[entity.id])
             } else {
                 // Topic-only entry — entity.transcript holds the originally typed topic.
                 runGenerationFlow(entity, videoUriForGen = null, manualTopic = entity.transcript)
@@ -618,6 +626,28 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
                             }
                         }
                     }
+                }
+            }
+
+            if (!manualMode) {
+                SectionCard(
+                    title = "Video ka topic (hint)",
+                    subtitle = "Optional par bohat behtar — video chunne se PEHLE likhein ke video asal mein kis baare mein hai (jaise: Surah An-Nasr ki tilawat). Khaas kar jab video mein bolna na ho."
+                ) {
+                    OutlinedTextField(
+                        value = videoHintText,
+                        onValueChange = { videoHintText = it },
+                        placeholder = { Text("jaise: Surah An-Nasr tilawat") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 1,
+                        maxLines = 3,
+                        enabled = !isWorking,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary,
+                            focusedBorderColor = CyanPrimary
+                        )
+                    )
                 }
             }
 

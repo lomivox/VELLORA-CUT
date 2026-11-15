@@ -91,6 +91,34 @@ class SecureCredentialStore(context: Context) {
         get() = prefs.getString(KEY_CHANNEL_NAME, "") ?: ""
         set(value) = prefs.edit().putString(KEY_CHANNEL_NAME, value).apply()
 
+    /** Gemini API keys, in the order they should be tried (first one first). Several keys can be
+     * pooled so one key's quota/error never stops the work. Stored encrypted like everything else here. */
+    var geminiKeys: List<String>
+        get() {
+            val raw = prefs.getString(KEY_GEMINI_KEYS_JSON, null) ?: return emptyList()
+            return try {
+                val array = JSONArray(raw)
+                (0 until array.length()).map { array.optString(it).trim() }.filter { it.isNotBlank() }
+            } catch (e: Exception) {
+                emptyList()
+            }
+        }
+        set(value) {
+            val array = JSONArray()
+            value.map { it.trim() }.filter { it.isNotBlank() }.forEach { array.put(it) }
+            prefs.edit().putString(KEY_GEMINI_KEYS_JSON, array.toString()).apply()
+        }
+
+    /** Free-text rules for this channel's titles/descriptions (e.g. the fixed title format). Added to every AI prompt. */
+    var channelStyle: String
+        get() = prefs.getString(KEY_CHANNEL_STYLE, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_CHANNEL_STYLE, value).apply()
+
+    /** Comma-separated tags that are added to EVERY video's tag list (after the AI's own tags). */
+    var fixedTags: String
+        get() = prefs.getString(KEY_FIXED_TAGS, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_FIXED_TAGS, value).apply()
+
     /** Default for the auto-upload toggle shown in Shorts Metadata — off
      * by default so nothing goes to YouTube without an explicit choice. */
     var autoUploadEnabled: Boolean
@@ -111,6 +139,9 @@ class SecureCredentialStore(context: Context) {
         private const val KEY_MODEL = "cf_image_model"
         private const val KEY_YOUTUBE_API_KEY = "youtube_data_api_key"
         private const val KEY_CHANNEL_NAME = "channel_name"
+        private const val KEY_GEMINI_KEYS_JSON = "gemini_keys_json"
+        private const val KEY_CHANNEL_STYLE = "channel_style_rules"
+        private const val KEY_FIXED_TAGS = "channel_fixed_tags"
         private const val KEY_AUTO_UPLOAD = "youtube_auto_upload_enabled"
         private const val KEY_RENAME_TO_TITLE = "rename_video_to_title"
         const val DEFAULT_MODEL = "@cf/black-forest-labs/flux-1-schnell"

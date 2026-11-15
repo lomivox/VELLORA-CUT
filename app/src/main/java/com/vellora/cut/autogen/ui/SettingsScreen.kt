@@ -41,6 +41,14 @@ private class AccountRowState(
     var apiToken by mutableStateOf(initialApiToken)
 }
 
+/** One Gemini API key row — own State so typing/pasting always redraws. */
+private class GeminiKeyRowState(
+    val key: String = UUID.randomUUID().toString(),
+    initialValue: String = ""
+) {
+    var value by mutableStateOf(initialValue)
+}
+
 @Composable
 fun SettingsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
@@ -61,6 +69,16 @@ fun SettingsScreen(onBack: () -> Unit) {
     var youtubeApiKey by remember { mutableStateOf(store.youtubeApiKey) }
     var channelName by remember { mutableStateOf(store.channelName) }
     var channelSavedMessage by remember { mutableStateOf<String?>(null) }
+    val geminiRows = remember {
+        mutableStateListOf<GeminiKeyRowState>().apply {
+            val saved = store.geminiKeys
+            if (saved.isEmpty()) add(GeminiKeyRowState()) else saved.forEach { add(GeminiKeyRowState(initialValue = it)) }
+        }
+    }
+    var geminiSavedMessage by remember { mutableStateOf<String?>(null) }
+    var channelStyle by remember { mutableStateOf(store.channelStyle) }
+    var fixedTags by remember { mutableStateOf(store.fixedTags) }
+    var styleSavedMessage by remember { mutableStateOf<String?>(null) }
 
     Scaffold(containerColor = BackgroundDark) { padding ->
         Column(
@@ -138,6 +156,70 @@ fun SettingsScreen(onBack: () -> Unit) {
                 }
 
                 Spacer(modifier = Modifier.height(28.dp))
+                Text(text = "Gemini API Keys (پہلے یہ استعمال ہوں گی)", color = CyanPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Shorts Metadata کے لیے Gemini 2.5 ویڈیو کی آواز سنتا اور فریمز دیکھتا ہے، اس لیے title/description/tags بہت بہتر بنتے ہیں۔ " +
+                        "ایک سے زیادہ keys add کریں: ہر key کو دو بار آزمایا جاتا ہے، پھر اگلی key۔ " +
+                        "اگر کوئی key نہ چلے تو اوپر والے Cloudflare accounts پرانے طریقے سے کام کریں گے۔",
+                    color = TextSecondary,
+                    fontSize = 12.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                geminiRows.forEachIndexed { index, row ->
+                    key(row.key) {
+                        var showKey by remember { mutableStateOf(false) }
+                        OutlinedTextField(
+                            value = row.value,
+                            onValueChange = { row.value = it.trim(); geminiSavedMessage = null },
+                            label = { Text("Gemini Key #${index + 1}", fontSize = 11.sp) },
+                            singleLine = true,
+                            visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
+                            trailingIcon = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    TextButton(onClick = { showKey = !showKey }) {
+                                        Text(text = if (showKey) "Hide" else "Show", color = CyanPrimary, fontSize = 11.sp)
+                                    }
+                                    if (geminiRows.size > 1) {
+                                        TextButton(onClick = { geminiRows.removeAt(index); geminiSavedMessage = null }) {
+                                            Text(text = "✕", color = Color(0xFFFF6B6B), fontSize = 13.sp)
+                                        }
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = fieldColors()
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+                OutlinedButton(
+                    onClick = { geminiRows.add(GeminiKeyRowState()) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(text = "+ Add Gemini Key (${geminiRows.size} so far)", color = CyanPrimary)
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(
+                    onClick = {
+                        val valid = geminiRows.map { it.value.trim() }.filter { it.isNotBlank() }.distinct()
+                        store.geminiKeys = valid
+                        geminiSavedMessage = "${valid.size} Gemini key(s) محفوظ ہو گئیں"
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
+                ) {
+                    Text(text = "Save Gemini Keys", color = BackgroundDark, fontWeight = FontWeight.Bold)
+                }
+                geminiSavedMessage?.let {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = "✅ ", fontSize = 13.sp)
+                        Text(text = it, color = TextSecondary, fontSize = 13.sp)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(28.dp))
                 Text(text = "YouTube Data API Key (اختیاری)", color = CyanPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
@@ -204,6 +286,55 @@ fun SettingsScreen(onBack: () -> Unit) {
                     Text(text = "Save Channel Name", color = BackgroundDark, fontWeight = FontWeight.Bold)
                 }
                 channelSavedMessage?.let {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = "✅ ", fontSize = 13.sp)
+                        Text(text = it, color = TextSecondary, fontSize = 13.sp)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(28.dp))
+                Text(text = "Channel Style (ٹیمپلیٹ)", color = CyanPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "اپنے چینل کے قاعدے ایک دفعہ لکھیں، ہر ویڈیو پر لگیں گے۔ مثلاً: ٹائٹل ہمیشہ \"سورۃ ... | خوبصورت تلاوت\" کے انداز میں ہو؛ " +
+                        "description میں اکیڈمی یا کورس کی بات نہ ہو۔",
+                    color = TextSecondary,
+                    fontSize = 12.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = channelStyle,
+                    onValueChange = { channelStyle = it; styleSavedMessage = null },
+                    label = { Text("Style rules") },
+                    minLines = 3,
+                    maxLines = 8,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = fieldColors()
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = fixedTags,
+                    onValueChange = { fixedTags = it; styleSavedMessage = null },
+                    label = { Text("Fixed tags (comma سے الگ) — ہر ویڈیو میں شامل ہوں گے") },
+                    minLines = 2,
+                    maxLines = 5,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = fieldColors()
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Button(
+                    onClick = {
+                        store.channelStyle = channelStyle
+                        store.fixedTags = fixedTags
+                        styleSavedMessage = "Channel Style محفوظ ہو گیا"
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
+                ) {
+                    Text(text = "Save Channel Style", color = BackgroundDark, fontWeight = FontWeight.Bold)
+                }
+                styleSavedMessage?.let {
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(text = "✅ ", fontSize = 13.sp)

@@ -123,6 +123,10 @@ fun YtiqHomeScreen() {
         scope.launch { dash.load(context, email) }
     }
 
+    // Only the channel's own name is ever shown (never the Gmail / account id).
+    val channelName: String? = dash.channel?.title?.takeIf { it.isNotBlank() }
+        ?: accounts.firstOrNull { it.email.equals(email, ignoreCase = true) }?.label
+
     fun openVideo(v: YtVideo) {
         try {
             context.startActivity(
@@ -203,13 +207,8 @@ fun YtiqHomeScreen() {
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = dash.channel?.title ?: (email ?: "YouTube jodein"),
-                                color = YtText, fontSize = 15.sp, fontWeight = FontWeight.Medium,
-                                maxLines = 1, overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = email ?: "Account Settings kholen",
-                                color = YtMuted, fontSize = 12.sp,
+                                text = channelName ?: "YouTube jodein",
+                                color = YtText, fontSize = 16.sp, fontWeight = FontWeight.Medium,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis
                             )
                         }
@@ -245,7 +244,31 @@ fun YtiqHomeScreen() {
                     }
                 }
                 Spacer(modifier = Modifier.width(12.dp))
-                Text(text = screen.label, color = YtText, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                Text(
+                    text = channelName ?: screen.label,
+                    color = YtText, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                if (screen == YtiqScreen.Home) {
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(YtCard)
+                            .clickable { refresh() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (dash.loading) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                color = YtText, strokeWidth = 2.dp, modifier = Modifier.size(20.dp)
+                            )
+                        } else {
+                            Text(text = "↻", color = YtText, fontSize = 20.sp)
+                        }
+                    }
+                }
             }
 
             Box(
@@ -301,6 +324,13 @@ fun YtiqHomeScreen() {
     if (showSheet) {
         ModalBottomSheet(onDismissRequest = { showSheet = false }, containerColor = YtCard) {
             Column(modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
+                accounts.forEach { acc ->
+                    YtiqDrawerItem("📺", acc.label, acc.email.equals(email, ignoreCase = true)) {
+                        YouTubeAccounts.select(context, acc.email)
+                        email = acc.email
+                        showSheet = false
+                    }
+                }
                 YtiqDrawerItem("⚙️", "Account Settings", false) {
                     showSheet = false
                     go(YtiqScreen.Settings)

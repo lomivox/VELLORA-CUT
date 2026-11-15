@@ -229,10 +229,6 @@ private fun AccountRow(acc: YtAccount, active: Boolean, onUse: () -> Unit, onRem
                     text = acc.label, color = TextPrimary, fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
-                Text(
-                    text = acc.gmail, color = TextSecondary, fontSize = 11.sp,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis
-                )
                 if (active) {
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(text = "● Upload yahan jayega", color = CyanPrimary, fontSize = 11.sp, fontWeight = FontWeight.Medium)

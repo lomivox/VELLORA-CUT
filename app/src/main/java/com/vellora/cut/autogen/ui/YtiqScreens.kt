@@ -89,7 +89,6 @@ fun YtiqHomeTab(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Spacer(modifier = Modifier.height(4.dp))
-        ChannelBar(dash.channel, accounts, selectedEmail, dash.loading, onSelectAccount, onOpenSettings, onRefresh)
 
         // A newer YTIQ version was found: tap to open Settings, where the Update card downloads and installs it.
         if (updateVersion != null) UpdateBanner(updateVersion, onOpenSettings)

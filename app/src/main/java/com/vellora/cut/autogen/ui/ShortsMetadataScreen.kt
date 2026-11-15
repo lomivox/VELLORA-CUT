@@ -71,6 +71,20 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
     var attachTarget by remember { mutableStateOf<ShortMetadataEntity?>(null) }
     // The connected YouTube account (channel) this upload goes to; picked right on this screen.
     var uploadAccountEmail by remember { mutableStateOf(com.vellora.cut.autogen.network.YouTubeAccounts.selectedEmail(context)) }
+    // Optional custom thumbnail for the next upload (set on YouTube after the video is up).
+    var thumbnailUri by remember { mutableStateOf<Uri?>(null) }
+    val thumbnailPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? -> if (uri != null) thumbnailUri = uri }
+
+    // A background upload writes its result straight into the database; follow it so the card updates itself.
+    LaunchedEffect(projects) {
+        val current = activeProject ?: return@LaunchedEffect
+        val fresh = projects.firstOrNull { it.id == current.id } ?: return@LaunchedEffect
+        if (fresh.status != current.status || fresh.youtubeVideoUrl != current.youtubeVideoUrl || fresh.errorMessage != current.errorMessage) {
+            activeProject = fresh
+        }
+    }
 
     suspend fun uploadToYouTube(entity0: ShortMetadataEntity): ShortMetadataEntity {
         var entity = entity0
@@ -80,15 +94,6 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
         val accountEmail = uploadAccountEmail
             ?: com.vellora.cut.autogen.network.YouTubeAccounts.selectedEmail(context)
             ?: return entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = "Pehle koi YouTube account connect karein (neeche \"Connect Account\" ya Settings)")
-
-        val tokenResult = YouTubeAuthManager.getFreshAccessToken(context, accountEmail)
-        val accessToken = when (tokenResult) {
-            is YouTubeAuthManager.TokenResult.Success -> tokenResult.accessToken
-            is YouTubeAuthManager.TokenResult.NeedsUserAction ->
-                return entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = "${accountEmail.substringBefore('#')} ki YouTube permission dobara chahiye — Settings mein is account ko Remove kar ke dobara jodein")
-            is YouTubeAuthManager.TokenResult.Error ->
-                return entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = tokenResult.message)
-        }
 
         // Before uploading, rename the video after its generated title (like renaming it in the Gallery),
         // so the file itself says what the video is about. Best-effort: if the phone refuses, upload goes on.
@@ -148,20 +153,29 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
             withContext(Dispatchers.IO) { com.vellora.cut.autogen.render.VideoRenamer.renameLocalCopy(context, reshapedFile, newBase) }
         } else reshapedFile
 
-        val uploadResult = withContext(Dispatchers.IO) {
-            YouTubeUploader.upload(
-                accessToken = accessToken,
-                videoFile = uploadFile,
-                title = entity.generatedTitle ?: entity.videoFileName,
-                description = fullDescription,
-                tags = tags
-            )
+        // The long part — sending the file — runs in a background worker (notification, progress, Cancel, resume),
+        // so it keeps going when the app is closed. Here we only stage the files and start it.
+        val stagedVideo = withContext(Dispatchers.IO) {
+            com.vellora.cut.autogen.work.UploadStaging.stageVideo(context, uploadFile, entity.id)
+        } ?: return entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = "Video upload ke liye tayyar nahi ho saki (jagah kam ho sakti hai)")
+
+        val stagedThumbnail = thumbnailUri?.let { picked ->
+            withContext(Dispatchers.IO) {
+                com.vellora.cut.autogen.work.UploadStaging.stageThumbnail(context, picked, entity.id)
+            }
         }
 
-        return uploadResult.fold(
-            onSuccess = { r -> entity.copy(status = ShortMetadataStatus.UPLOADED, youtubeVideoUrl = r.videoUrl) },
-            onFailure = { e -> entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = "Upload fail: ${e.message}") }
+        entity = entity.copy(status = ShortMetadataStatus.UPLOADING, errorMessage = null)
+        dao.update(entity)
+        com.vellora.cut.autogen.work.YouTubeUploadWorker.enqueue(
+            context = context,
+            entityId = entity.id,
+            videoPath = stagedVideo.absolutePath,
+            thumbPath = stagedThumbnail?.absolutePath,
+            accountKey = accountEmail
         )
+        thumbnailUri = null
+        return entity
     }
 
     /** Uploads [entity] (its title/description/tags as they are now) and saves the result. Keeps the process alive while it runs. */
@@ -642,6 +656,28 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
 
         Spacer(modifier = Modifier.height(12.dp))
 
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedButton(
+                onClick = { thumbnailPicker.launch("image/*") },
+                enabled = !isWorking
+            ) {
+                Text(text = if (thumbnailUri == null) "🖼 Thumbnail chunein (optional)" else "🖼 Thumbnail badlein", color = TextPrimary, fontSize = 12.sp)
+            }
+            if (thumbnailUri != null) {
+                Text(text = "✅ chuna gaya", color = CyanPrimary, fontSize = 12.sp)
+                TextButton(onClick = { thumbnailUri = null }) {
+                    Text(text = "Hatayen", color = TextSecondary, fontSize = 12.sp)
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+
         Button(
             onClick = { videoPicker.launch("video/*") },
             enabled = !isWorking && (!manualMode || manualTitle.isNotBlank()),
@@ -726,7 +762,17 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
                 project = shownProject,
                 onRetry = { retry(shownProject) },
                 onSaveEdit = { edited -> scope.launch { dao.update(edited); activeProject = edited } },
-                onAttachVideo = { attachTarget = it; attachPicker.launch("video/*") }
+                onAttachVideo = { attachTarget = it; attachPicker.launch("video/*") },
+                onCancelUpload = {
+                    scope.launch {
+                        com.vellora.cut.autogen.work.YouTubeUploadWorker.cancel(context, shownProject.id)
+                        withContext(Dispatchers.IO) { com.vellora.cut.autogen.work.UploadStaging.cleanup(context, shownProject.id) }
+                        val latest = dao.getById(shownProject.id) ?: shownProject
+                        val reset = latest.copy(status = ShortMetadataStatus.DONE, errorMessage = null)
+                        dao.update(reset)
+                        activeProject = reset
+                    }
+                }
             )
         }
 
@@ -749,7 +795,8 @@ private fun ResultCard(
     project: ShortMetadataEntity,
     onRetry: () -> Unit,
     onSaveEdit: (ShortMetadataEntity) -> Unit,
-    onAttachVideo: (ShortMetadataEntity) -> Unit
+    onAttachVideo: (ShortMetadataEntity) -> Unit,
+    onCancelUpload: () -> Unit
 ) {
     val context = LocalContext.current
     var editing by remember(project.id) { mutableStateOf(false) }
@@ -774,6 +821,11 @@ private fun ResultCard(
             ) {
                 Text(text = "🔁 Retry", color = BackgroundDark, fontWeight = FontWeight.Bold)
             }
+            Spacer(modifier = Modifier.height(10.dp))
+        }
+
+        if (project.status == ShortMetadataStatus.UPLOADING) {
+            UploadProgressCard(entityId = project.id, onCancel = onCancelUpload)
             Spacer(modifier = Modifier.height(10.dp))
         }
 
@@ -839,6 +891,10 @@ private fun ResultCard(
             Spacer(modifier = Modifier.height(12.dp))
             Text(text = "✅ YouTube پر upload ہو گئی", color = CyanPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             Text(text = project.youtubeVideoUrl, color = TextSecondary, fontSize = 12.sp)
+            if (!project.errorMessage.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(text = "ℹ ${project.errorMessage}", color = Color(0xFFFFB84D), fontSize = 12.sp)
+            }
         } else if (project.videoUri.isNotBlank() && project.status == ShortMetadataStatus.DONE) {
             Spacer(modifier = Modifier.height(12.dp))
             Button(

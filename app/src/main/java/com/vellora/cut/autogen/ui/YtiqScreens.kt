@@ -151,7 +151,7 @@ private fun ChannelBar(
             DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
                 accounts.forEach { acc ->
                     DropdownMenuItem(
-                        text = { Text(text = acc.label + "\n" + acc.email, fontSize = 13.sp) },
+                        text = { Text(text = acc.label + "\n" + acc.gmail, fontSize = 13.sp) },
                         onClick = { open = false; onSelect(acc.email) }
                     )
                 }

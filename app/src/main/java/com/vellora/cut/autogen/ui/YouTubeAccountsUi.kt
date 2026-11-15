@@ -24,6 +24,7 @@ import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.common.api.ApiException
 import androidx.compose.foundation.text.selection.SelectionContainer
 import com.vellora.cut.autogen.network.AppIdentity
+import com.vellora.cut.autogen.network.ChannelAuth
 import com.vellora.cut.autogen.network.YouTubeAccounts
 import com.vellora.cut.autogen.network.YouTubeAuthManager
 import com.vellora.cut.autogen.network.YtAccount
@@ -69,6 +70,25 @@ private fun rememberAddAccount(onError: (String?) -> Unit, onChanged: () -> Unit
     return { YouTubeAuthManager.chooseAccount(context) { launcher.launch(it) } }
 }
 
+/** Returns a function that opens Google's login page in the browser, where the CHANNEL is chosen. */
+@Composable
+private fun rememberChannelConnect(onError: (String?) -> Unit): () -> Unit {
+    val context = LocalContext.current
+    return {
+        val intent = ChannelAuth.buildAuthIntent(context)
+        if (intent == null) {
+            onError("Pehle neeche \"Google Client ID\" likhein (Cloud Console ka Android OAuth client).")
+        } else {
+            onError(null)
+            try {
+                context.startActivity(intent)
+            } catch (e: Exception) {
+                onError("Browser nahi khul saka")
+            }
+        }
+    }
+}
+
 /** A readable reason for a failed Google sign-in, plus the exact package + SHA-1 this app presents to Google. */
 private fun describeSignInFailure(context: android.content.Context, code: Int): String {
     val why = when (code) {
@@ -108,8 +128,11 @@ fun YouTubeAccountsSection() {
     val accounts = remember(version) { YouTubeAccounts.list(context) }
     val selected = remember(version) { YouTubeAccounts.selectedEmail(context) }
     val add = rememberAddAccount(onError = { error = it }, onChanged = { version++ })
+    val addChannel = rememberChannelConnect(onError = { error = it })
+    var clientId by remember { mutableStateOf(ChannelAuth.clientId(context).orEmpty()) }
 
     LaunchedEffect(Unit) {
+        ChannelAuth.takeLastError(context)?.let { error = it }
         YouTubeAccounts.migrateLegacy(context)
         version++
         // Fill in channel names that are still missing (account added before names were read).
@@ -143,14 +166,37 @@ fun YouTubeAccountsSection() {
     }
 
     Button(
-        onClick = add,
+        onClick = addChannel,
         modifier = Modifier.fillMaxWidth(),
         colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
     ) {
         Text(
-            text = if (accounts.isEmpty()) "Connect YouTube Account" else "+ Dusra Gmail / Channel jodein",
+            text = "+ Channel chunein aur jodein",
             color = BackgroundDark, fontWeight = FontWeight.Bold
         )
+    }
+    Text(
+        text = "Google ki apni screen khulegi jahan aap channel chunte hain (Brand channel bhi). " +
+            "Dusra channel jodna ho to dobara dabayein aur wahan dusra channel chunein.",
+        color = TextSecondary,
+        fontSize = 11.sp
+    )
+    Spacer(modifier = Modifier.height(6.dp))
+    OutlinedTextField(
+        value = clientId,
+        onValueChange = { clientId = it; ChannelAuth.setClientId(context, it) },
+        label = { Text("Google Client ID (is app ka Android OAuth client)") },
+        singleLine = true,
+        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary),
+        modifier = Modifier.fillMaxWidth()
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    Button(
+        onClick = add,
+        modifier = Modifier.fillMaxWidth(),
+        colors = ButtonDefaults.buttonColors(containerColor = SurfaceVariant)
+    ) {
+        Text(text = "Purana tareeqa: Gmail ka default channel", color = TextPrimary, fontSize = 12.sp)
     }
     error?.let {
         Spacer(modifier = Modifier.height(6.dp))
@@ -193,7 +239,7 @@ private fun AccountRow(acc: YtAccount, active: Boolean, onUse: () -> Unit, onRem
                     fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = acc.email, color = TextSecondary, fontSize = 11.sp,
+                    text = acc.gmail, color = TextSecondary, fontSize = 11.sp,
                     maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
                 if (active) {

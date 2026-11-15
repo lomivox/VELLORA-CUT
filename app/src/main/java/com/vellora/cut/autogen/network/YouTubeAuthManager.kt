@@ -78,7 +78,13 @@ object YouTubeAuthManager {
     }
 
     /** A token for any connected account, identified by its email. */
-    suspend fun getFreshAccessToken(context: Context, email: String): TokenResult =
+    suspend fun getFreshAccessToken(context: Context, email: String): TokenResult {
+        // Channel logins ("gmail#channelId") have their own saved login; old Gmail-only accounts use Google Sign-In below.
+        if (ChannelAuth.isChannelKey(email)) return ChannelAuth.freshToken(context, email)
+        return getGoogleSignInToken(context, email)
+    }
+
+    private suspend fun getGoogleSignInToken(context: Context, email: String): TokenResult =
         withContext(Dispatchers.IO) {
             val androidAccount = Account(email, "com.google")
             try {

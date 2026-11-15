@@ -85,7 +85,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
         val accessToken = when (tokenResult) {
             is YouTubeAuthManager.TokenResult.Success -> tokenResult.accessToken
             is YouTubeAuthManager.TokenResult.NeedsUserAction ->
-                return entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = "$accountEmail ki YouTube permission dobara chahiye — Settings mein is account ko Remove kar ke dobara jodein")
+                return entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = "${accountEmail.substringBefore('#')} ki YouTube permission dobara chahiye — Settings mein is account ko Remove kar ke dobara jodein")
             is YouTubeAuthManager.TokenResult.Error ->
                 return entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = tokenResult.message)
         }

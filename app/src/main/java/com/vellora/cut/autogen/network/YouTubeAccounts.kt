@@ -8,6 +8,9 @@ import org.json.JSONObject
 data class YtAccount(val email: String, val displayName: String, val channelTitle: String) {
     /** The name to show in the UI: channel name if known, else the account name, else the email. */
     val label: String get() = channelTitle.ifBlank { displayName.ifBlank { email } }
+
+    /** The Gmail address to show. [email] is really the account KEY: "gmail#channelId" for channel logins, plain Gmail for old ones. */
+    val gmail: String get() = email.substringBefore(ChannelAuth.KEY_SEPARATOR)
 }
 
 /**
@@ -19,6 +22,7 @@ object YouTubeAccounts {
     private const val PREFS = "youtube_accounts"
     private const val KEY_LIST = "list"
     private const val KEY_SELECTED = "selected"
+    private const val KEY_LEGACY_DONE = "legacy_migrated"
 
     private fun prefs(c: Context) = c.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
@@ -58,6 +62,7 @@ object YouTubeAccounts {
     }
 
     fun remove(c: Context, email: String) {
+        if (ChannelAuth.isChannelKey(email)) ChannelAuth.forget(c, email)
         val rest = list(c).filterNot { it.email.equals(email, ignoreCase = true) }
         save(c, rest)
         if (selectedEmail(c).equals(email, ignoreCase = true)) {
@@ -83,6 +88,9 @@ object YouTubeAccounts {
 
     /** Older versions kept ONE account inside Google Sign-In only. Brings it into the list (once). */
     fun migrateLegacy(c: Context) {
+        // Only ever once: otherwise removing the last account would bring the old default-channel login back.
+        if (prefs(c).getBoolean(KEY_LEGACY_DONE, false)) return
+        prefs(c).edit().putBoolean(KEY_LEGACY_DONE, true).apply()
         if (list(c).isNotEmpty()) return
         val legacy = YouTubeAuthManager.getCurrentAccount(c) ?: return
         val email = legacy.email ?: return

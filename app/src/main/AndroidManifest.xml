@@ -41,6 +41,21 @@
             </intent-filter>
         </activity>
 
+        <!-- Google's login page returns here ("<package>:/oauth2redirect") after the channel is picked. -->
+        <activity
+            android:name=".autogen.network.OAuthRedirectActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="${applicationId}" />
+            </intent-filter>
+        </activity>
+
         <receiver
             android:name=".update.InstallResultReceiver"
             android:exported="false" />

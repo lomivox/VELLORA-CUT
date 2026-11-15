@@ -131,7 +131,7 @@ class YouTubeUploadWorker(
             // (no internet etc.) and WorkManager will start it again by itself — in that case leave everything.
             withContext(NonCancellable + Dispatchers.IO) {
                 val cancelledByPerson = try {
-                    WorkManager.getInstance(applicationContext).getWorkInfoById(id).get().state == WorkInfo.State.CANCELLED
+                    WorkManager.getInstance(applicationContext).getWorkInfoById(id).get()?.state == WorkInfo.State.CANCELLED
                 } catch (x: Exception) {
                     false
                 }

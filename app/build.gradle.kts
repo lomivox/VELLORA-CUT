@@ -72,7 +72,7 @@ android {
 
     // One code base, two apps installed side by side:
     //   cut  = VELLORA CUT (video editor + everything)
-    //   ytiq = YTIQ (same code and app id, own name/icon/update line; this is the one CI builds)
+    //   ytiq = YTIQ (same code, its OWN app id com.vellora.ytiq, name, icon and update line; VELLORA CUT is left as it is)
     flavorDimensions += "app"
     productFlavors {
         create("cut") {
@@ -83,8 +83,7 @@ android {
         }
         create("ytiq") {
             dimension = "app"
-            // Same app id as VELLORA CUT (com.vellora.cut): Google sign-in, saved accounts and keys all keep working,
-            // and YTIQ installs as an update over it. Only one of the two apps can be on a phone.
+            applicationId = "com.vellora.ytiq"
             buildConfigField("String", "TAG_PREFIX", "\"ytiq-v0.1.\"")
             buildConfigField("boolean", "IS_YTIQ", "true")
             resValue("string", "app_name", "YTIQ")

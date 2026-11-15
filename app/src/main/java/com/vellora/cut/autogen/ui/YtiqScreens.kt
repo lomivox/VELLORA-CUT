@@ -29,6 +29,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -69,6 +71,7 @@ enum class YtiqTab(val icon: String, val label: String) {
 
 // ---------------------------------------------------------------- Home
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun YtiqHomeTab(
     dash: YtiqDashboard,
@@ -80,6 +83,12 @@ fun YtiqHomeTab(
     onOpenVideo: (YtVideo) -> Unit,
     updateVersion: String? = null
 ) {
+    // Pull the page down from the top to refresh (like a browser) — there is no refresh button any more.
+    PullToRefreshBox(
+        isRefreshing = dash.loading,
+        onRefresh = onRefresh,
+        modifier = Modifier.fillMaxSize()
+    ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -105,11 +114,12 @@ fun YtiqHomeTab(
             }
             val latest = dash.videos.firstOrNull()
             if (latest != null) {
-                Text(text = "Latest Video", color = YtText, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                Text(text = "Latest Video", color = YtText, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 LatestVideoCard(latest, computePerformance(dash.videos)) { onOpenVideo(latest) }
             }
         }
         Spacer(modifier = Modifier.height(12.dp))
+    }
     }
 }
 
@@ -222,7 +232,7 @@ private fun Stat(label: String, value: Long?, modifier: Modifier) {
         Text(text = label, color = YtMuted, fontSize = 13.sp, fontWeight = FontWeight.Medium)
         Text(
             text = if (value == null) "Hidden" else formatCount(value),
-            color = YtText, fontSize = 40.sp, fontWeight = FontWeight.Bold
+            color = YtText, fontSize = 30.sp, fontWeight = FontWeight.Bold
         )
         if (value != null) {
             val (from, to) = milestoneRange(value)
@@ -247,7 +257,7 @@ private fun LatestVideoCard(video: YtVideo, perf: YtPerformance?, onClick: () ->
                 modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(16.dp))
             )
             Text(
-                text = video.title, color = YtText, fontSize = 20.sp, fontWeight = FontWeight.SemiBold,
+                text = video.title, color = YtText, fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
                 maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 4.dp)
             )
             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -270,8 +280,8 @@ private fun perfColor(percent: Int): Color = when {
 @Composable
 private fun Metric(label: String, value: String, valueColor: Color, modifier: Modifier) {
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(text = label, color = YtMuted, fontSize = 14.sp)
-        Text(text = value, color = valueColor, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Text(text = label, color = YtMuted, fontSize = 13.sp)
+        Text(text = value, color = valueColor, fontSize = 20.sp, fontWeight = FontWeight.Bold)
     }
 }
 

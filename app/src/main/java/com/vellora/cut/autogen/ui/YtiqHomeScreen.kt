@@ -29,6 +29,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalDrawerSheet
@@ -95,6 +97,7 @@ fun YtiqHomeScreen() {
     var accounts by remember { mutableStateOf(YouTubeAccounts.list(context)) }
     var email by remember { mutableStateOf(YouTubeAccounts.selectedEmail(context)) }
     var showSheet by remember { mutableStateOf(false) }
+    var channelMenuOpen by remember { mutableStateOf(false) }
     var toolsOpen by remember { mutableStateOf(true) }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
 
@@ -126,9 +129,10 @@ fun YtiqHomeScreen() {
         scope.launch { dash.load(context, email) }
     }
 
-    // Only the channel's own name is ever shown (never the Gmail / account id).
+    // The top bar shows the channel's own name + logo; the Gmail is shown only at the bottom of the side menu.
     val channelName: String? = dash.channel?.title?.takeIf { it.isNotBlank() }
         ?: accounts.firstOrNull { it.email.equals(email, ignoreCase = true) }?.label
+    val connectedGmail: String? = accounts.firstOrNull { it.email.equals(email, ignoreCase = true) }?.gmail
 
     fun openVideo(v: YtVideo) {
         try {
@@ -203,15 +207,13 @@ fun YtiqHomeScreen() {
                             .padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        RemoteImage(
-                            url = dash.channel?.avatarUrl,
-                            modifier = Modifier.size(40.dp).clip(CircleShape)
-                        )
+                        Text(text = "✉️", fontSize = 18.sp)
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
+                            // The Gmail YTIQ is connected with — shown only here, nowhere else in the app.
                             Text(
-                                text = channelName ?: "YouTube jodein",
-                                color = YtText, fontSize = 16.sp, fontWeight = FontWeight.Medium,
+                                text = connectedGmail ?: "YouTube jodein",
+                                color = YtText, fontSize = 14.sp, fontWeight = FontWeight.Medium,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis
                             )
                         }
@@ -247,29 +249,60 @@ fun YtiqHomeScreen() {
                     }
                 }
                 Spacer(modifier = Modifier.width(12.dp))
-                Text(
-                    text = channelName ?: screen.label,
-                    color = YtText, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-                if (screen == YtiqScreen.Home) {
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Box(
+                // Channel logo + name; tap it to switch between the connected channels.
+                Box(modifier = Modifier.weight(1f)) {
+                    Row(
                         modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(YtCard)
-                            .clickable { refresh() },
-                        contentAlignment = Alignment.Center
+                            .clip(RoundedCornerShape(24.dp))
+                            .clickable(enabled = accounts.isNotEmpty()) { channelMenuOpen = true }
+                            .padding(end = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (dash.loading) {
-                            androidx.compose.material3.CircularProgressIndicator(
-                                color = YtText, strokeWidth = 2.dp, modifier = Modifier.size(20.dp)
+                        if (channelName != null) {
+                            RemoteImage(
+                                url = dash.channel?.avatarUrl,
+                                modifier = Modifier.size(32.dp).clip(CircleShape)
                             )
-                        } else {
-                            Text(text = "↻", color = YtText, fontSize = 20.sp)
+                            Spacer(modifier = Modifier.width(10.dp))
                         }
+                        Text(
+                            text = channelName ?: screen.label,
+                            color = YtText, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        if (channelName != null && accounts.isNotEmpty()) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(text = "▾", color = YtMuted, fontSize = 14.sp)
+                        }
+                    }
+                    DropdownMenu(
+                        expanded = channelMenuOpen,
+                        onDismissRequest = { channelMenuOpen = false },
+                        modifier = Modifier.background(YtCard)
+                    ) {
+                        accounts.forEach { acc ->
+                            val isSelected = acc.email.equals(email, ignoreCase = true)
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = acc.label, color = YtText, fontSize = 15.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis
+                                    )
+                                },
+                                leadingIcon = { Text(text = if (isSelected) "✓" else "📺", color = YtText, fontSize = 15.sp) },
+                                onClick = {
+                                    channelMenuOpen = false
+                                    YouTubeAccounts.select(context, acc.email)
+                                    email = acc.email
+                                }
+                            )
+                        }
+                        DropdownMenuItem(
+                            text = { Text(text = "+ Channel jodein", color = YtText, fontSize = 15.sp) },
+                            onClick = { channelMenuOpen = false; go(YtiqScreen.Settings) }
+                        )
                     }
                 }
             }
@@ -327,13 +360,6 @@ fun YtiqHomeScreen() {
     if (showSheet) {
         ModalBottomSheet(onDismissRequest = { showSheet = false }, containerColor = YtCard) {
             Column(modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
-                accounts.forEach { acc ->
-                    YtiqDrawerItem("📺", acc.label, acc.email.equals(email, ignoreCase = true)) {
-                        YouTubeAccounts.select(context, acc.email)
-                        email = acc.email
-                        showSheet = false
-                    }
-                }
                 YtiqDrawerItem("⚙️", "Account Settings", false) {
                     showSheet = false
                     go(YtiqScreen.Settings)

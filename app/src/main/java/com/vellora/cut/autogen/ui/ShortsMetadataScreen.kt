@@ -7,6 +7,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -396,397 +397,476 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
             .fillMaxSize()
             .background(BackgroundDark)
     ) {
+        // ------------------------------------------------------------ top bar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            TextButton(onClick = { if (showHistory) showHistory = false else onBack() }) {
-                Text(text = "← Back", color = TextPrimary)
-            }
-            Text(
-                text = if (showHistory) "History (${projects.size})" else "Shorts Metadata",
-                color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.width(60.dp))
-        }
-
-        if (showHistory) {
-            // Full page, nothing else sharing the space — this used to be a
-            // few cramped rows squeezed at the bottom of the main screen
-            // where a long list, or a tall result card above it, could push
-            // it out of view entirely. Now it's its own screen.
-            LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                items(projects) { p ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { activeProject = p; errorMessage = null; showHistory = false }
-                            .padding(horizontal = 16.dp, vertical = 14.dp)
-                    ) {
-                        Column {
-                            Text(
-                                text = p.generatedTitle ?: p.videoFileName,
-                                color = TextPrimary,
-                                fontSize = 14.sp,
-                                maxLines = 2
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(text = p.status, color = TextSecondary, fontSize = 11.sp)
-                        }
-                    }
-                    HorizontalDivider(color = SurfaceVariant)
-                }
-            }
-            return@Column
-        }
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .verticalScroll(rememberScrollState())
-        ) {
-
-        Text(
-            text = "Gallery se koi bhi video chunein — real transcript + YouTube keyword research se Title/Description/Tags/Hashtags banega",
-            color = TextSecondary,
-            fontSize = 12.sp,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            listOf(false to "🔍 SEO Auto", true to "✍️ Manual Title").forEach { (value, label) ->
-                val selected = manualMode == value
-                Surface(
-                    onClick = { manualMode = value; errorMessage = null },
-                    shape = RoundedCornerShape(14.dp),
-                    color = if (selected) CyanPrimary else SurfaceVariant,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(
-                        text = label,
-                        color = if (selected) BackgroundDark else TextPrimary,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                        modifier = Modifier.padding(vertical = 12.dp)
-                    )
-                }
-            }
-        }
-        Text(
-            text = if (manualMode) "Aap khud title/description/tags likhte hain — video bina AI ke usi par upload hogi."
-                   else "Video sun kar transcript + YouTube keywords se SEO Title/Description/Tags khud banenge.",
-            color = TextSecondary,
-            fontSize = 11.sp,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-        )
-        Spacer(modifier = Modifier.height(6.dp))
-
-        if (manualMode) {
-            val fc = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary, focusedBorderColor = CyanPrimary
-            )
-            OutlinedTextField(
-                value = manualTitle, onValueChange = { manualTitle = it },
-                label = { Text("Title (zaroori)") }, singleLine = true,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), colors = fc
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedTextField(
-                value = manualDescription, onValueChange = { manualDescription = it },
-                label = { Text("Description (optional)") }, minLines = 3,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), colors = fc
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedTextField(
-                value = manualTags, onValueChange = { manualTags = it },
-                label = { Text("Tags (comma se alag, optional)") },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), colors = fc
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedButton(
-                onClick = { saveManualDraft() },
-                enabled = !isWorking && manualTitle.isNotBlank(),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+                    .background(SurfaceDark)
+                    .clickable { if (showHistory) showHistory = false else onBack() },
+                contentAlignment = Alignment.Center
             ) {
-                Text(text = "💾 Sirf Draft save karein (video baad mein)", color = TextPrimary)
+                Text(text = "←", color = TextPrimary, fontSize = 18.sp)
             }
-            Spacer(modifier = Modifier.height(12.dp))
-        } else {
-        Text(
-            text = "Language",
-            color = TextSecondary,
-            fontSize = 11.sp,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
-        Spacer(modifier = Modifier.height(6.dp))
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            listOf("Urdu", "English").forEach { lang ->
-                val selected = outputLanguage == lang
-                Surface(
-                    onClick = { outputLanguage = lang },
-                    shape = RoundedCornerShape(20.dp),
-                    color = if (selected) CyanPrimary else SurfaceVariant
-                ) {
-                    Text(
-                        text = lang,
-                        color = if (selected) BackgroundDark else TextPrimary,
-                        fontSize = 12.sp,
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+            Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(text = "Auto-upload YouTube پر", color = TextPrimary, fontSize = 13.sp)
                 Text(
-                    text = "Metadata مکمل ہوتے ہی خودکار اپلوڈ ہو جائے (اپنے connected account میں)",
-                    color = TextSecondary,
-                    fontSize = 10.sp
+                    text = if (showHistory) "History" else "Shorts Metadata",
+                    color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = if (showHistory) "${projects.size} entries" else "Title • Description • Tags • YouTube upload",
+                    color = TextSecondary, fontSize = 11.sp
                 )
             }
-            Switch(
-                checked = autoUploadEnabled,
-                onCheckedChange = { autoUploadEnabled = it; credStore.autoUploadEnabled = it },
-                colors = SwitchDefaults.colors(checkedTrackColor = CyanPrimary)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        }
-
-        UploadAccountSelector(
-            modifier = Modifier.padding(horizontal = 16.dp),
-            onSelected = { uploadAccountEmail = it }
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(text = "Video ka naam title par rakhein", color = TextPrimary, fontSize = 13.sp)
-                Text(
-                    text = "Upload se pehle video ka naam (gallery mein) title ke mutabiq badal jayega",
-                    color = TextSecondary,
-                    fontSize = 10.sp
-                )
-            }
-            Switch(
-                checked = renameToTitle,
-                onCheckedChange = { renameToTitle = it; credStore.renameVideoToTitle = it },
-                colors = SwitchDefaults.colors(checkedTrackColor = CyanPrimary)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Short/Long reshaping needs FFmpeg, which only VELLORA CUT has; YTIQ uploads the video as it is.
-        if (!com.vellora.cut.BuildConfig.IS_YTIQ) {
-        Text(
-            text = "Upload Shape",
-            color = TextSecondary,
-            fontSize = 11.sp,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
-        Spacer(modifier = Modifier.height(6.dp))
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            listOf(
-                com.vellora.cut.autogen.data.UploadTarget.AUTO to "Auto (jaisi hai)",
-                com.vellora.cut.autogen.data.UploadTarget.SHORT to "Short",
-                com.vellora.cut.autogen.data.UploadTarget.LONG to "Long"
-            ).forEach { (value, label) ->
-                val selected = uploadTarget == value
+            if (!showHistory) {
                 Surface(
-                    onClick = { uploadTarget = value },
+                    onClick = { showHistory = true },
                     shape = RoundedCornerShape(20.dp),
-                    color = if (selected) CyanPrimary else SurfaceVariant
+                    color = SurfaceDark
                 ) {
                     Text(
-                        text = label,
-                        color = if (selected) BackgroundDark else TextPrimary,
-                        fontSize = 12.sp,
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                        text = "📋  ${projects.size}",
+                        color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium,
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
                     )
                 }
             }
         }
-        if (uploadTarget != com.vellora.cut.autogen.data.UploadTarget.AUTO) {
-            Text(
-                text = "Agar zaroorat pari to real FFmpeg se video crop/trim ho kar upload hogi",
-                color = TextSecondary,
-                fontSize = 10.sp,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
-            )
-        }
-        }
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            OutlinedButton(
-                onClick = { thumbnailPicker.launch("image/*") },
-                enabled = !isWorking
-            ) {
-                Text(text = if (thumbnailUri == null) "🖼 Thumbnail chunein (optional)" else "🖼 Thumbnail badlein", color = TextPrimary, fontSize = 12.sp)
-            }
-            if (thumbnailUri != null) {
-                Text(text = "✅ chuna gaya", color = CyanPrimary, fontSize = 12.sp)
-                TextButton(onClick = { thumbnailUri = null }) {
-                    Text(text = "Hatayen", color = TextSecondary, fontSize = 12.sp)
-                }
-            }
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Button(
-            onClick = { videoPicker.launch("video/*") },
-            enabled = !isWorking && (!manualMode || manualTitle.isNotBlank()),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
-        ) {
-            Text(text = if (manualMode) "📁 Video chunein aur Upload karein" else "📁 Gallery se Video Chunein", color = BackgroundDark, fontWeight = FontWeight.Bold)
-        }
-
-        classificationHint?.let {
-            Text(
-                text = it,
-                color = CyanPrimary,
-                fontSize = 12.sp,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-            )
-        }
-
-        if (!manualMode) {
-        Spacer(modifier = Modifier.height(14.dp))
-        Text(
-            text = "Ya apna topic khud likhein (video ke bagair)",
-            color = TextSecondary,
-            fontSize = 11.sp,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
-        Spacer(modifier = Modifier.height(6.dp))
-        OutlinedTextField(
-            value = manualTopicText,
-            onValueChange = { manualTopicText = it },
-            placeholder = { Text("jaise: 5 tips ghar par workout karne ke liye") },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            minLines = 2,
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = TextPrimary,
-                unfocusedTextColor = TextPrimary,
-                focusedBorderColor = CyanPrimary
-            )
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Button(
-            onClick = { generateFromTopic() },
-            enabled = !isWorking && manualTopicText.isNotBlank(),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = SurfaceVariant)
-        ) {
-            Text(text = "✍️ Topic se Generate Karein", color = TextPrimary, fontWeight = FontWeight.Bold)
-        }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        if (isWorking) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                LinearProgressIndicator(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = CyanPrimary
+        if (showHistory) {
+            if (projects.isEmpty()) {
+                Text(
+                    text = "Abhi koi entry nahi hai.",
+                    color = TextSecondary, fontSize = 13.sp,
+                    modifier = Modifier.padding(24.dp)
                 )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(text = statusLabel(statusText), color = TextSecondary, fontSize = 12.sp)
             }
-        }
-
-        if (errorMessage != null && !isWorking) {
-            Text(
-                text = "⚠ $errorMessage",
-                color = Color(0xFFFF6B6B),
-                fontSize = 12.sp,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-            )
-        }
-
-        val shownProject = activeProject
-        if (shownProject != null) {
-            ResultCard(
-                project = shownProject,
-                onRetry = { retry(shownProject) },
-                onSaveEdit = { edited -> scope.launch { dao.update(edited); activeProject = edited } },
-                onAttachVideo = { attachTarget = it; attachPicker.launch("video/*") },
-                onCancelUpload = {
-                    scope.launch {
-                        com.vellora.cut.autogen.work.YouTubeUploadWorker.cancel(context, shownProject.id)
-                        withContext(Dispatchers.IO) { com.vellora.cut.autogen.work.UploadStaging.cleanup(context, shownProject.id) }
-                        val latest = dao.getById(shownProject.id) ?: shownProject
-                        val reset = latest.copy(status = ShortMetadataStatus.DONE, errorMessage = null)
-                        dao.update(reset)
-                        activeProject = reset
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(projects) { p ->
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(SurfaceDark)
+                            .clickable { activeProject = p; errorMessage = null; showHistory = false }
+                            .padding(14.dp)
+                    ) {
+                        Text(
+                            text = p.generatedTitle ?: p.videoFileName,
+                            color = TextPrimary, fontSize = 14.sp, maxLines = 2
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = if (p.youtubeVideoUrl != null) "✅ Uploaded" else p.status,
+                            color = if (p.youtubeVideoUrl != null) CyanPrimary else TextSecondary,
+                            fontSize = 11.sp
+                        )
                     }
                 }
-            )
+            }
+            return@Column
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-        OutlinedButton(
-            onClick = { showHistory = true },
+        // ------------------------------------------------------------ main page
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp)
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = 24.dp)
         ) {
-            Text(text = "📋 History (${projects.size})", color = TextPrimary)
-        }
-        Spacer(modifier = Modifier.height(20.dp))
+            ModeToggle(manualMode = manualMode, onChange = { manualMode = it; errorMessage = null })
+            Text(
+                text = if (manualMode) "Aap khud title/description/tags likhte hain — video bina AI ke usi par upload hogi."
+                       else "Video sun kar transcript + YouTube keywords se SEO Title/Description/Tags khud banenge.",
+                color = TextSecondary,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
+            )
+
+            SectionCard(title = "YouTube channel", subtitle = "Video isi channel par upload hogi") {
+                UploadAccountSelector(
+                    modifier = Modifier,
+                    onSelected = { uploadAccountEmail = it }
+                )
+            }
+
+            if (manualMode) {
+                val fc = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary, focusedBorderColor = CyanPrimary
+                )
+                SectionCard(title = "Title aur details", subtitle = "Title zaroori hai, baaki optional") {
+                    OutlinedTextField(
+                        value = manualTitle, onValueChange = { manualTitle = it },
+                        label = { Text("Title (zaroori)") }, singleLine = true,
+                        modifier = Modifier.fillMaxWidth(), colors = fc
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = manualDescription, onValueChange = { manualDescription = it },
+                        label = { Text("Description (optional)") }, minLines = 3,
+                        modifier = Modifier.fillMaxWidth(), colors = fc
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = manualTags, onValueChange = { manualTags = it },
+                        label = { Text("Tags (comma se alag, optional)") },
+                        modifier = Modifier.fillMaxWidth(), colors = fc
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    OutlinedButton(
+                        onClick = { saveManualDraft() },
+                        enabled = !isWorking && manualTitle.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Text(text = "💾 Sirf Draft save karein (video baad mein)", color = TextPrimary, fontSize = 13.sp)
+                    }
+                }
+            } else {
+                SectionCard(title = "Language", subtitle = "Title / Description kis zaban mein banein") {
+                    ChoiceChips(
+                        options = listOf("Urdu" to "Urdu", "English" to "English"),
+                        selected = outputLanguage,
+                        onSelect = { outputLanguage = it }
+                    )
+                }
+            }
+
+            SectionCard(title = "Upload options") {
+                if (!manualMode) {
+                    SettingSwitchRow(
+                        title = "Auto-upload YouTube پر",
+                        description = "Metadata مکمل ہوتے ہی خودکار اپلوڈ ہو جائے (اپنے connected account میں)",
+                        checked = autoUploadEnabled,
+                        onChange = { autoUploadEnabled = it; credStore.autoUploadEnabled = it }
+                    )
+                    HorizontalDivider(color = SurfaceVariant)
+                }
+                SettingSwitchRow(
+                    title = "Video ka naam title par rakhein",
+                    description = "Upload se pehle video ka naam (gallery mein) title ke mutabiq badal jayega",
+                    checked = renameToTitle,
+                    onChange = { renameToTitle = it; credStore.renameVideoToTitle = it }
+                )
+                // Short/Long reshaping needs FFmpeg, which only VELLORA CUT has; YTIQ uploads the video as it is.
+                if (!com.vellora.cut.BuildConfig.IS_YTIQ) {
+                    HorizontalDivider(color = SurfaceVariant)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(text = "Upload Shape", color = TextPrimary, fontSize = 13.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    ChoiceChips(
+                        options = listOf(
+                            com.vellora.cut.autogen.data.UploadTarget.AUTO to "Auto (jaisi hai)",
+                            com.vellora.cut.autogen.data.UploadTarget.SHORT to "Short",
+                            com.vellora.cut.autogen.data.UploadTarget.LONG to "Long"
+                        ),
+                        selected = uploadTarget,
+                        onSelect = { uploadTarget = it }
+                    )
+                    if (uploadTarget != com.vellora.cut.autogen.data.UploadTarget.AUTO) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Agar zaroorat pari to real FFmpeg se video crop/trim ho kar upload hogi",
+                            color = TextSecondary, fontSize = 10.sp
+                        )
+                    }
+                }
+            }
+
+            SectionCard(
+                title = "Thumbnail",
+                subtitle = "Optional — video upload hone ke baad lagegi (2 MB se bari ho to khud chhoti ho jati hai)"
+            ) {
+                val picked = thumbnailUri
+                if (picked == null) {
+                    OutlinedButton(
+                        onClick = { thumbnailPicker.launch("image/*") },
+                        enabled = !isWorking,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Text(text = "🖼  Thumbnail chunein", color = TextPrimary, fontSize = 13.sp)
+                    }
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        ThumbnailPreview(uri = picked, modifier = Modifier.width(120.dp).height(68.dp))
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column {
+                            Text(text = "✅ Thumbnail chuna gaya", color = CyanPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Row {
+                                TextButton(onClick = { thumbnailPicker.launch("image/*") }, enabled = !isWorking) {
+                                    Text(text = "Badlein", color = TextPrimary, fontSize = 12.sp)
+                                }
+                                TextButton(onClick = { thumbnailUri = null }) {
+                                    Text(text = "Hatayen", color = TextSecondary, fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ---------------------------------------------------------- main action
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(
+                onClick = { videoPicker.launch("video/*") },
+                enabled = !isWorking && (!manualMode || manualTitle.isNotBlank()),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .height(56.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
+            ) {
+                Text(
+                    text = if (manualMode) "📁  Video chunein aur Upload karein" else "📁  Gallery se Video chunein",
+                    color = BackgroundDark, fontSize = 15.sp, fontWeight = FontWeight.Bold
+                )
+            }
+            if (manualMode && manualTitle.isBlank()) {
+                Text(
+                    text = "Pehle upar Title likhein",
+                    color = TextSecondary, fontSize = 11.sp,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)
+                )
+            }
+
+            classificationHint?.let {
+                Text(
+                    text = it,
+                    color = CyanPrimary,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+                )
+            }
+
+            if (!manualMode) {
+                SectionCard(title = "Ya sirf topic se banayein", subtitle = "Video ke bagair — apna topic likhein") {
+                    OutlinedTextField(
+                        value = manualTopicText,
+                        onValueChange = { manualTopicText = it },
+                        placeholder = { Text("jaise: 5 tips ghar par workout karne ke liye") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 2,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary,
+                            focusedBorderColor = CyanPrimary
+                        )
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Button(
+                        onClick = { generateFromTopic() },
+                        enabled = !isWorking && manualTopicText.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = SurfaceVariant)
+                    ) {
+                        Text(text = "✍️  Topic se Generate karein", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                }
+            }
+
+            // ---------------------------------------------------------- status / result
+            if (isWorking) {
+                SectionCard(title = "Kaam ho raha hai") {
+                    LinearProgressIndicator(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = CyanPrimary
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(text = statusLabel(statusText), color = TextSecondary, fontSize = 12.sp)
+                }
+            }
+
+            if (errorMessage != null && !isWorking) {
+                Text(
+                    text = "⚠ $errorMessage",
+                    color = Color(0xFFFF6B6B),
+                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0x22FF6B6B))
+                        .padding(14.dp)
+                )
+            }
+
+            val shownProject = activeProject
+            if (shownProject != null) {
+                ResultCard(
+                    project = shownProject,
+                    onRetry = { retry(shownProject) },
+                    onSaveEdit = { edited -> scope.launch { dao.update(edited); activeProject = edited } },
+                    onAttachVideo = { attachTarget = it; attachPicker.launch("video/*") },
+                    onCancelUpload = {
+                        scope.launch {
+                            com.vellora.cut.autogen.work.YouTubeUploadWorker.cancel(context, shownProject.id)
+                            withContext(Dispatchers.IO) { com.vellora.cut.autogen.work.UploadStaging.cleanup(context, shownProject.id) }
+                            val latest = dao.getById(shownProject.id) ?: shownProject
+                            val reset = latest.copy(status = ShortMetadataStatus.DONE, errorMessage = null)
+                            dao.update(reset)
+                            activeProject = reset
+                        }
+                    }
+                )
+            }
+            Spacer(modifier = Modifier.height(12.dp))
         } // end scrollable content Column
+    }
+}
+
+// ---------------------------------------------------------------------- page building blocks
+
+/** A rounded card with a heading — every block of the page uses this so the page looks consistent. */
+@Composable
+private fun SectionCard(
+    title: String,
+    subtitle: String? = null,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val shape = RoundedCornerShape(20.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .clip(shape)
+            .background(SurfaceDark)
+            .border(1.dp, SurfaceVariant, shape)
+            .padding(16.dp)
+    ) {
+        Text(text = title, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+        if (subtitle != null) {
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(text = subtitle, color = TextSecondary, fontSize = 11.sp)
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        content()
+    }
+}
+
+/** SEO Auto / Manual switch, drawn as one rounded bar with two segments. */
+@Composable
+private fun ModeToggle(manualMode: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(SurfaceDark)
+            .padding(4.dp)
+    ) {
+        listOf(false to "🔍 SEO Auto", true to "✍️ Manual Title").forEach { (value, label) ->
+            val selected = manualMode == value
+            Surface(
+                onClick = { onChange(value) },
+                shape = RoundedCornerShape(12.dp),
+                color = if (selected) CyanPrimary else Color.Transparent,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = label,
+                    color = if (selected) BackgroundDark else TextPrimary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier.padding(vertical = 12.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun <T> ChoiceChips(options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        options.forEach { (value, label) ->
+            val isSelected = value == selected
+            Surface(
+                onClick = { onSelect(value) },
+                shape = RoundedCornerShape(20.dp),
+                color = if (isSelected) CyanPrimary else SurfaceVariant
+            ) {
+                Text(
+                    text = label,
+                    color = if (isSelected) BackgroundDark else TextPrimary,
+                    fontSize = 12.sp,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingSwitchRow(title: String, description: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+            Text(text = title, color = TextPrimary, fontSize = 13.sp)
+            Text(text = description, color = TextSecondary, fontSize = 11.sp)
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onChange,
+            colors = SwitchDefaults.colors(checkedTrackColor = CyanPrimary)
+        )
+    }
+}
+
+/** Small preview of the picked thumbnail (decoded smaller, off the main thread). */
+@Composable
+private fun ThumbnailPreview(uri: Uri, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(initialValue = null, uri) {
+        value = withContext(Dispatchers.IO) {
+            try {
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    val options = android.graphics.BitmapFactory.Options().apply { inSampleSize = 4 }
+                    android.graphics.BitmapFactory.decodeStream(stream, null, options)
+                        ?.let { androidx.compose.ui.graphics.asImageBitmap(it) }
+                }
+            } catch (e: Exception) {
+                null
+            }
+        }
+    }
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(SurfaceVariant),
+        contentAlignment = Alignment.Center
+    ) {
+        val image = bitmap
+        if (image != null) {
+            androidx.compose.foundation.Image(
+                bitmap = image,
+                contentDescription = null,
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Text(text = "🖼", fontSize = 20.sp)
+        }
     }
 }
 
@@ -807,10 +887,11 @@ private fun ResultCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(20.dp))
             .background(SurfaceDark)
-            .padding(14.dp)
+            .border(1.dp, SurfaceVariant, RoundedCornerShape(20.dp))
+            .padding(16.dp)
     ) {
         if (project.status == ShortMetadataStatus.ERROR) {
             Text(text = "⚠ ${project.errorMessage ?: "Kuch ghalat ho gaya"}", color = Color(0xFFFF6B6B), fontSize = 12.sp)

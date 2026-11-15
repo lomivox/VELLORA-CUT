@@ -52,12 +52,16 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      # Version numbers start at 1001 so a new build is always higher than any older install of this app id.
+      - name: Version number
+        run: echo "APP_CODE=$((${{ github.run_number }} + 1000))" >> "$GITHUB_ENV"
+
       # Signed with the fixed keystore in the repo (app/keystore/vellora-shared.keystore) = TEMPORARY testing key.
       # versionCode = run number (only ever goes up), so every build installs as an update over the last one.
       - name: Build debug APK
         env:
-          VERSION_CODE: ${{ github.run_number }}
-          VERSION_NAME: 0.1.${{ github.run_number }}
+          VERSION_CODE: ${{ env.APP_CODE }}
+          VERSION_NAME: 0.1.${{ env.APP_CODE }}
         run: ./gradlew assembleYtiqDebug --no-daemon
 
       - name: Run unit tests
@@ -66,7 +70,7 @@ jobs:
 
       - name: Name the APK
         run: |
-          APK="${APP_NAME}-v0.1.${{ github.run_number }}.apk"
+          APK="${APP_NAME}-v0.1.${{ env.APP_CODE }}.apk"
           cp app/build/outputs/apk/ytiq/debug/app-ytiq-debug.apk "$APK"
           echo "APK_FILE=$APK" >> "$GITHUB_ENV"
 
@@ -99,8 +103,8 @@ jobs:
           repository: ${{ env.RELEASES_REPO }}
           target_commitish: main
           make_latest: false
-          tag_name: ytiq-v0.1.${{ github.run_number }}
-          name: YTIQ v0.1.${{ github.run_number }}
+          tag_name: ytiq-v0.1.${{ env.APP_CODE }}
+          name: YTIQ v0.1.${{ env.APP_CODE }}
           body_path: release-notes.md
           files: ${{ env.APK_FILE }}
 
@@ -110,7 +114,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
         run: |
-          KEEP="ytiq-v0.1.${{ github.run_number }}"
+          KEEP="ytiq-v0.1.${{ env.APP_CODE }}"
           gh release list --repo "$RELEASES_REPO" --limit 200 --json tagName --jq '.[].tagName' |
           while read -r tag; do
             if [ "$tag" != "$KEEP" ]; then

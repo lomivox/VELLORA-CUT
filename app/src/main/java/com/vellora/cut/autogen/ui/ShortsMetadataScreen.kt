@@ -846,7 +846,7 @@ private fun ThumbnailPreview(uri: Uri, modifier: Modifier = Modifier) {
                 context.contentResolver.openInputStream(uri)?.use { stream ->
                     val options = android.graphics.BitmapFactory.Options().apply { inSampleSize = 4 }
                     android.graphics.BitmapFactory.decodeStream(stream, null, options)
-                        ?.let { androidx.compose.ui.graphics.asImageBitmap(it) }
+                        ?.asImageBitmap()
                 }
             } catch (e: Exception) {
                 null

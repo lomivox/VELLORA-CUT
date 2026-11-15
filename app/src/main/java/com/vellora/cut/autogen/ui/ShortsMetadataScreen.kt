@@ -60,6 +60,8 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
     var uploadTarget by remember { mutableStateOf(com.vellora.cut.autogen.data.UploadTarget.AUTO) }
     var manualTopicText by remember { mutableStateOf("") }
     var showHistory by remember { mutableStateOf(false) }
+    // Back closes the History list first, before leaving this page.
+    androidx.activity.compose.BackHandler(enabled = showHistory) { showHistory = false }
     val credStore = remember { SecureCredentialStore(context) }
     var autoUploadEnabled by remember { mutableStateOf(credStore.autoUploadEnabled) }
     var renameToTitle by remember { mutableStateOf(credStore.renameVideoToTitle) }

@@ -44,6 +44,9 @@ fun AutoGenHomeScreen() {
 
     // ProjectList is now the app's true root — back-button handling here
     // is disabled at that point, so the system default (exit app) applies.
+    // On the first page (project list) Back closes the app (2nd press).
+    ExitOnDoubleBack(enabled = screen is AutoGenScreen.ProjectList)
+
     BackHandler(enabled = screen !is AutoGenScreen.ProjectList) {
         screen = when (val current = screen) {
             is AutoGenScreen.NewProject -> AutoGenScreen.ProjectList

@@ -114,7 +114,10 @@ fun YtiqHomeScreen() {
         }
     }
 
+    // Back: close the side menu first, then go back to Home, and on Home close the app (2nd press).
+    BackHandler(enabled = drawerState.isOpen) { scope.launch { drawerState.close() } }
     BackHandler(enabled = screen != YtiqScreen.Home && !drawerState.isOpen) { screen = YtiqScreen.Home }
+    ExitOnDoubleBack(enabled = screen == YtiqScreen.Home && !drawerState.isOpen)
 
     val update = AppUpdater.info
     val updateName = update?.takeIf { it.code != AppUpdater.ignoredCode }?.name

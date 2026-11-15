@@ -33,7 +33,6 @@ object ChannelAuth {
     const val KEY_SEPARATOR = '#'
 
     private const val PREFS = "yt_channel_auth"
-    private const val K_CLIENT_ID = "client_id"
     private const val K_VERIFIER = "pending_verifier"
     private const val K_STATE = "pending_state"
     private const val K_LAST_ERROR = "last_error"
@@ -70,13 +69,10 @@ object ChannelAuth {
 
     // ------------------------------------------------------------ settings
 
-    /** The Android OAuth client ID of THIS app (each app id has its own client in Cloud Console). */
+    /** The Android OAuth client ID of THIS app (built in per app id, see build.gradle.kts; nothing to type in). */
+    @Suppress("UNUSED_PARAMETER")
     fun clientId(context: Context): String? =
-        secure(context).getString(K_CLIENT_ID, null)?.trim()?.takeIf { it.isNotEmpty() }
-
-    fun setClientId(context: Context, value: String) {
-        secure(context).edit().putString(K_CLIENT_ID, value.trim()).apply()
-    }
+        com.vellora.cut.BuildConfig.GOOGLE_CLIENT_ID.trim().takeIf { it.isNotEmpty() }
 
     fun redirectUri(context: Context): String = "${context.packageName}:/oauth2redirect"
 

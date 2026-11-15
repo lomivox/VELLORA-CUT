@@ -77,7 +77,7 @@ private fun rememberChannelConnect(onError: (String?) -> Unit): () -> Unit {
     return {
         val intent = ChannelAuth.buildAuthIntent(context)
         if (intent == null) {
-            onError("Pehle neeche \"Google Client ID\" likhein (Cloud Console ka Android OAuth client).")
+            onError("Is app mein Google Client ID shamil nahi hai")
         } else {
             onError(null)
             try {
@@ -129,7 +129,6 @@ fun YouTubeAccountsSection() {
     val selected = remember(version) { YouTubeAccounts.selectedEmail(context) }
     val add = rememberAddAccount(onError = { error = it }, onChanged = { version++ })
     val addChannel = rememberChannelConnect(onError = { error = it })
-    var clientId by remember { mutableStateOf(ChannelAuth.clientId(context).orEmpty()) }
 
     LaunchedEffect(Unit) {
         ChannelAuth.takeLastError(context)?.let { error = it }
@@ -182,14 +181,6 @@ fun YouTubeAccountsSection() {
         fontSize = 11.sp
     )
     Spacer(modifier = Modifier.height(6.dp))
-    OutlinedTextField(
-        value = clientId,
-        onValueChange = { clientId = it; ChannelAuth.setClientId(context, it) },
-        label = { Text("Google Client ID (is app ka Android OAuth client)") },
-        singleLine = true,
-        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary),
-        modifier = Modifier.fillMaxWidth()
-    )
     Spacer(modifier = Modifier.height(8.dp))
     Button(
         onClick = add,

@@ -79,6 +79,8 @@ android {
             dimension = "app"
             buildConfigField("String", "TAG_PREFIX", "\"v0.1.\"")
             buildConfigField("boolean", "IS_YTIQ", "false")
+            // Google OAuth Android client of com.vellora.cut (public by design, not a secret).
+            buildConfigField("String", "GOOGLE_CLIENT_ID", "\"757160863745-ukeo1esi9dktbeh903vtiifk06jrpt0o.apps.googleusercontent.com\"")
             resValue("string", "app_name", "VELLORA CUT")
         }
         create("ytiq") {
@@ -86,6 +88,8 @@ android {
             applicationId = "com.vellora.ytiq"
             buildConfigField("String", "TAG_PREFIX", "\"ytiq-v0.1.\"")
             buildConfigField("boolean", "IS_YTIQ", "true")
+            // Google OAuth Android client of com.vellora.ytiq (public by design, not a secret).
+            buildConfigField("String", "GOOGLE_CLIENT_ID", "\"757160863745-50ll90rlqogr95nfp6gj9qpbmkf25f1b.apps.googleusercontent.com\"")
             resValue("string", "app_name", "YTIQ")
         }
     }

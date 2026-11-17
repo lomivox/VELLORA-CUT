@@ -59,7 +59,8 @@ object ShortsMetadataGenerator {
                 Exception("Koi Gemini key ya Cloudflare account save nahi hai — pehle Settings mein add karein")
             )
         }
-        val hint = topicHint?.trim().orEmpty()
+        // When only a typed topic/title is given (no video), that text is the authority on what the video is about.
+        val hint = topicHint?.trim().orEmpty().ifBlank { if (videoUri == null) manualTopic?.trim().orEmpty() else "" }
 
         var transcript = ""
         var audioFile: File? = null
@@ -130,7 +131,7 @@ object ShortsMetadataGenerator {
         val keywords: List<String>
         val competitorTitles: List<String>
         if (competitor != null && competitor.rankedKeywords.isNotEmpty()) {
-            keywords = filterCompetitorNoise(competitor.rankedKeywords, "$transcript $hint")
+            keywords = keepOnTopic(filterCompetitorNoise(competitor.rankedKeywords, "$transcript $hint"), "$hint $transcript")
             competitorTitles = competitor.competitorTitles
         } else {
             keywords = if (seed.isBlank()) emptyList() else try {
@@ -148,6 +149,8 @@ object ShortsMetadataGenerator {
         val style = store.channelStyle.trim()
         var rawResponse: String? = null
         var lastError: String? = null
+        // A reply that repeats itself is kept only as a last resort — the next engine/try is used first.
+        var degenerateCandidate: String? = null
 
         if (geminiKeys.isNotEmpty()) {
             val geminiPrompt = buildPrompt(
@@ -157,11 +160,16 @@ object ShortsMetadataGenerator {
             val out = runGemini(geminiKeys, geminiPrompt, audioForGemini, frames)
             rawResponse = out.text
             lastError = out.error
+            if (!rawResponse.isNullOrBlank() && !isAcceptable(rawResponse!!)) {
+                degenerateCandidate = rawResponse
+                rawResponse = null
+                lastError = "Gemini ka jawab bar bar dohra raha tha"
+            }
         }
 
         if (rawResponse.isNullOrBlank() && accounts.isNotEmpty()) {
             // Tell the person Gemini did not work this time (or was not set up) so they can see which engine wrote the text.
-            if (geminiKeys.isNotEmpty()) onStatusChange("generating_cloudflare")
+            if (geminiKeys.isNotEmpty()) onStatusChange("generating_cloudflare:" + (lastError ?: "").take(90))
             // Cloudflare cannot hear/see the video, so its prompt has no audio/frames parts.
             val cfPrompt = buildPrompt(
                 transcript, keywords, competitorTitles, language, channelName,
@@ -174,8 +182,15 @@ object ShortsMetadataGenerator {
                 repeat(2) { attempt ->
                     if (succeeded) return@repeat
                     try {
-                        rawResponse = client.generateText(cfPrompt, account.accountId, account.apiToken)
-                        succeeded = true
+                        val candidate = client.generateText(cfPrompt, account.accountId, account.apiToken)
+                        if (isAcceptable(candidate)) {
+                            rawResponse = candidate
+                            succeeded = true
+                        } else {
+                            degenerateCandidate = candidate
+                            lastError = "AI ka jawab bar bar dohra raha tha"
+                            if (attempt == 0) delay(1000)
+                        }
                     } catch (e: CloudflareApiException) {
                         lastError = e.message
                         if (!e.isQuotaExceeded && attempt == 0) delay(1500)
@@ -189,9 +204,10 @@ object ShortsMetadataGenerator {
         }
 
         val finalRaw: String = rawResponse?.takeIf { it.isNotBlank() }
+            ?: degenerateCandidate?.takeIf { it.isNotBlank() }
             ?: return@withContext Result.failure(Exception(lastError ?: "Title/Description generate nahi ho saki"))
 
-        val parsed = parseResponse(finalRaw)
+        val parsed = cleanParsed(parseResponse(finalRaw))
         val title = if (parsed.first == "Untitled" && hint.isNotBlank()) hint.take(100) else parsed.first
         val descriptionWithHashtags = appendTopHashtagsToDescription(parsed.second, parsed.fourth)
         Result.success(
@@ -440,6 +456,9 @@ object ShortsMetadataGenerator {
             - The keyword list above is inspiration for GENERAL topic phrasing only — any keyword that names a specific person or place must be dropped unless it also appears in the Transcript or hint.
             - Do not use teaching-academy wording ("learn with us", course/class promotion) unless the video itself is a lesson.
             - When in doubt, leave it out — a shorter, accurate tag list beats a longer one with details that don't belong to this video.
+            - If the transcript is only a short title/topic typed by the creator (no real speech), write ONLY about what that title itself says. Do not invent a storyline, and do not add any subject, practice, claim or genre (for example religious practices, remedies or investment tips) that the title, hint or transcript does not mention. A "success story" title stays a success story.
+            - Never repeat a sentence, phrase or tag: every sentence and every tag must be different from all the others.
+            - Never use Hindi-only vocabulary (such as "samasya" or "samadhan") — write plain, correct language of the requested kind.
 
             Transcript (machine-made, may contain errors):
             "${transcript.take(6000).ifBlank { "(none)" }}"
@@ -469,6 +488,52 @@ object ShortsMetadataGenerator {
             TAGS: <tags>
             HASHTAGS: <hashtags>
         """.trimIndent()
+    }
+
+    private fun tokens(text: String): Set<String> =
+        normalizeAr(text).split(Regex("[^a-z0-9\\u0600-\\u06FF]+")).filter { it.length >= 3 }.toSet()
+
+    /**
+     * Keeps only competitor keywords that are really about THIS video. With just a short title/topic as reference
+     * (no real speech), a keyword must share at least half of its words with it — otherwise YouTube's top results for
+     * a similar-sounding phrase (a different genre entirely) leak into the tags.
+     */
+    private fun keepOnTopic(keywords: List<String>, reference: String): List<String> {
+        val ref = tokens(reference)
+        if (ref.size >= 40) return keywords // a real transcript — the earlier filter is enough
+        return keywords.filter { kw ->
+            val words = tokens(kw)
+            words.isNotEmpty() && words.count { it in ref }.toDouble() / words.size >= 0.5
+        }
+    }
+
+    private fun sentencesOf(text: String): List<String> =
+        text.split(Regex("(?<=[.!?\\u06D4\\u061F])\\s+")).map { it.trim() }.filter { it.length > 3 }
+
+    /** True when the reply loops: many repeated sentences or repeated tags (typical of a small model going round in circles). */
+    private fun looksDegenerate(p: Parsed): Boolean {
+        val sentences = sentencesOf(p.second).map { it.lowercase() }
+        if (sentences.size >= 4 && sentences.toSet().size.toDouble() / sentences.size < 0.7) return true
+        val tags = p.third.split(',', '\u060C').map { it.trim().lowercase() }.filter { it.isNotBlank() }
+        if (tags.size >= 6 && tags.toSet().size.toDouble() / tags.size < 0.6) return true
+        return false
+    }
+
+    private fun isAcceptable(raw: String): Boolean = !looksDegenerate(parseResponse(raw))
+
+    /** Removes repeated sentences, tags and hashtags so nothing is ever published twice. */
+    private fun cleanParsed(p: Parsed): Parsed {
+        val seenSentences = HashSet<String>()
+        val description = p.second.split(Regex("\\n\\s*\\n")).mapNotNull { paragraph ->
+            val kept = sentencesOf(paragraph).filter { seenSentences.add(it.lowercase()) }
+            if (kept.isEmpty()) null else kept.joinToString(" ")
+        }.joinToString("\n\n").ifBlank { p.second }
+
+        val tags = p.third.split(',', '\u060C').map { it.trim().trimStart('#').trim() }.filter { it.isNotBlank() }
+            .distinctBy { it.lowercase() }.take(15).joinToString(", ")
+        val hashtags = p.fourth.split(Regex("\\s+")).map { it.trim() }.filter { it.isNotBlank() }
+            .map { if (it.startsWith("#")) it else "#$it" }.distinctBy { it.lowercase() }.take(10).joinToString(" ")
+        return Parsed(first = p.first, second = description, third = tags, fourth = hashtags)
     }
 
     /** (title, description, tags, hashtags) */

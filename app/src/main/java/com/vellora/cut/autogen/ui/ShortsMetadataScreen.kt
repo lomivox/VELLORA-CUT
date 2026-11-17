@@ -56,6 +56,8 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
     var outputLanguage by remember { mutableStateOf("Urdu") } // "Urdu", "English" or "Roman Urdu"
     var isWorking by remember { mutableStateOf(false) }
     var statusText by remember { mutableStateOf("") }
+    // Which engine wrote the last result (Gemini or the Cloudflare backup, and why Gemini was skipped).
+    var engineNote by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var classificationHint by remember { mutableStateOf<String?>(null) }
     var uploadTarget by remember { mutableStateOf(com.vellora.cut.autogen.data.UploadTarget.AUTO) }
@@ -214,6 +216,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
             return
         }
         isWorking = true
+        engineNote = ""
         com.vellora.cut.autogen.render.RenderKeepAliveService.start(context, "Shorts Metadata ban rahi hai…")
         try {
             val result = ShortsMetadataGenerator.generate(
@@ -223,7 +226,14 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
                 accounts = accounts,
                 language = outputLanguage,
                 topicHint = topicHint,
-                onStatusChange = { statusText = it }
+                onStatusChange = {
+                    statusText = it
+                    if (it == "generating_gemini") engineNote = "✨ Gemini ne likha"
+                    else if (it.startsWith("generating_cloudflare")) {
+                        val reason = it.substringAfter(":", "").trim()
+                        engineNote = "⚠ Gemini nahi chala" + (if (reason.isNotBlank()) " ($reason)" else "") + " — backup (Cloudflare) ne likha"
+                    } else if (it == "generating") engineNote = "Cloudflare ne likha (Gemini key save nahi hai)"
+                }
             )
             isWorking = false
 
@@ -727,6 +737,14 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
                 }
             }
 
+            if (!isWorking && engineNote.isNotBlank()) {
+                Text(
+                    text = engineNote,
+                    color = TextSecondary, fontSize = 11.sp,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)
+                )
+            }
+
             if (errorMessage != null && !isWorking) {
                 Text(
                     text = "⚠ $errorMessage",
@@ -1061,9 +1079,8 @@ private fun statusLabel(status: String): String = when (status) {
     ShortMetadataStatus.RESEARCHING_KEYWORDS -> "YouTube se real keywords dhoonde ja rahe hain…"
     ShortMetadataStatus.GENERATING -> "AI Title/Description/Tags bana raha hai…"
     "generating_gemini" -> "Gemini Title/Description/Tags bana raha hai…"
-    "generating_cloudflare" -> "Gemini nahi chala — backup (Cloudflare) se ban raha hai…"
     ShortMetadataStatus.UPLOADING -> "YouTube par upload ho raha hai…"
-    else -> "Kaam ho raha hai…"
+    else -> if (status.startsWith("generating_cloudflare")) "Gemini nahi chala — backup (Cloudflare) se ban raha hai…" else "Kaam ho raha hai…"
 }
 
 /**

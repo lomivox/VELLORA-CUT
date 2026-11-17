@@ -354,6 +354,10 @@ class CloudflareAiClient {
             // silently cut off after the title (or partway through the
             // description) with Tags/Hashtags missing entirely.
             put("max_tokens", 2600)
+            // This small model tends to go round in circles on long structured replies (the same sentence and
+            // tags over and over); a repetition penalty makes it move on.
+            put("repetition_penalty", 1.2)
+            put("temperature", 0.6)
         }.toString().toRequestBody("application/json".toMediaType())
 
         val request = Request.Builder()

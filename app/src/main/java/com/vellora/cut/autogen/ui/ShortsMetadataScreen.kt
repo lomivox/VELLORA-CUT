@@ -412,29 +412,31 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
+                .padding(horizontal = 16.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(androidx.compose.foundation.shape.CircleShape)
-                    .background(SurfaceDark)
-                    .clickable { if (showHistory) showHistory = false else onBack() },
-                contentAlignment = Alignment.Center
-            ) {
-                Text(text = "←", color = TextPrimary, fontSize = 18.sp)
+            // YTIQ uses the phone's own back button (it also closes History); the arrow stays only in VELLORA CUT.
+            if (!com.vellora.cut.BuildConfig.IS_YTIQ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(SurfaceDark)
+                        .clickable { if (showHistory) showHistory = false else onBack() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = "←", color = TextPrimary, fontSize = 18.sp)
+                }
+                Spacer(modifier = Modifier.width(10.dp))
             }
-            Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = if (showHistory) "History" else "Shorts Metadata",
-                    color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold
+                    color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold
                 )
-                Text(
-                    text = if (showHistory) "${projects.size} entries" else "Title • Description • Tags • YouTube upload",
-                    color = TextSecondary, fontSize = 11.sp
-                )
+                if (showHistory) {
+                    Text(text = "${projects.size} entries", color = TextSecondary, fontSize = 11.sp)
+                }
             }
             if (!showHistory) {
                 Surface(
@@ -445,7 +447,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
                     Text(
                         text = "📋  ${projects.size}",
                         color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                     )
                 }
             }
@@ -499,16 +501,17 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
         ) {
             ModeToggle(manualMode = manualMode, onChange = { manualMode = it; errorMessage = null })
             Text(
-                text = if (manualMode) "Aap khud title/description/tags likhte hain — video bina AI ke usi par upload hogi."
-                       else "Video sun kar transcript + YouTube keywords se SEO Title/Description/Tags khud banenge.",
+                text = if (manualMode) "Aap khud likhein — video bina AI ke upload hogi."
+                       else "Video sun kar SEO Title/Description/Tags khud banenge.",
                 color = TextSecondary,
                 fontSize = 11.sp,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)
             )
 
-            SectionCard(title = "YouTube channel", subtitle = "Video isi channel par upload hogi") {
+            SectionCard(title = "Upload kis channel par?") {
                 UploadAccountSelector(
                     modifier = Modifier,
+                    showLabel = false,
                     onSelected = { uploadAccountEmail = it }
                 )
             }
@@ -546,7 +549,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
                     }
                 }
             } else {
-                SectionCard(title = "Language", subtitle = "Title / Description kis zaban mein banein") {
+                SectionCard(title = "Title / Description ki zaban") {
                     ChoiceChips(
                         options = listOf("Urdu" to "Urdu", "English" to "English"),
                         selected = outputLanguage,
@@ -598,7 +601,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
 
             SectionCard(
                 title = "Thumbnail",
-                subtitle = "Optional — video upload hone ke baad lagegi (2 MB se bari ho to khud chhoti ho jati hai)"
+                subtitle = "Optional — video upload hone ke baad lagegi"
             ) {
                 val picked = thumbnailUri
                 if (picked == null) {
@@ -632,7 +635,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
             if (!manualMode) {
                 SectionCard(
                     title = "Video ka topic (hint)",
-                    subtitle = "Optional par bohat behtar — video chunne se PEHLE likhein ke video asal mein kis baare mein hai (jaise: Surah An-Nasr ki tilawat). Khaas kar jab video mein bolna na ho."
+                    subtitle = "Optional — video chunne se pehle likhein ke video kis baare mein hai"
                 ) {
                     OutlinedTextField(
                         value = videoHintText,
@@ -775,18 +778,18 @@ private fun SectionCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .padding(horizontal = 16.dp, vertical = 4.dp)
             .clip(shape)
             .background(SurfaceDark)
             .border(1.dp, SurfaceVariant, shape)
-            .padding(16.dp)
+            .padding(14.dp)
     ) {
         Text(text = title, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
         if (subtitle != null) {
             Spacer(modifier = Modifier.height(2.dp))
             Text(text = subtitle, color = TextSecondary, fontSize = 11.sp)
         }
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         content()
     }
 }

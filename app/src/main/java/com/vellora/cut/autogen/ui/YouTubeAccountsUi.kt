@@ -252,8 +252,9 @@ private fun AccountRow(acc: YtAccount, active: Boolean, onUse: () -> Unit, onRem
  * Upload screen: pick which connected channel this upload goes to (the choice is remembered).
  * [onSelected] gets the chosen email, or null when none is connected.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun UploadAccountSelector(modifier: Modifier = Modifier, onSelected: (String?) -> Unit) {
+fun UploadAccountSelector(modifier: Modifier = Modifier, showLabel: Boolean = true, onSelected: (String?) -> Unit) {
     val context = LocalContext.current
     var version by remember { mutableIntStateOf(0) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -265,12 +266,14 @@ fun UploadAccountSelector(modifier: Modifier = Modifier, onSelected: (String?) -
     LaunchedEffect(selected) { onSelected(selected) }
 
     Column(modifier = modifier) {
-        Text(text = "Upload kis channel par?", color = TextSecondary, fontSize = 11.sp)
-        Spacer(modifier = Modifier.height(6.dp))
-        Row(
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
+        if (showLabel) {
+            Text(text = "Upload kis channel par?", color = TextSecondary, fontSize = 11.sp)
+            Spacer(modifier = Modifier.height(6.dp))
+        }
+        // Wraps onto a second line instead of running off the screen, so every channel and "+ Account" stay visible.
+        FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             accounts.forEach { acc ->
                 val active = acc.email.equals(selected, ignoreCase = true)

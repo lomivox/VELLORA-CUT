@@ -85,13 +85,15 @@ fun SettingsScreen(onBack: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(20.dp)
+                .padding(horizontal = 16.dp, vertical = if (com.vellora.cut.BuildConfig.IS_YTIQ) 8.dp else 20.dp)
         ) {
-            TextButton(onClick = onBack) {
-                Text(text = "← Back", color = TextSecondary, fontSize = 13.sp)
+            // YTIQ uses the phone's own back button; the "← Back" line stays only in VELLORA CUT.
+            if (!com.vellora.cut.BuildConfig.IS_YTIQ) {
+                TextButton(onClick = onBack) {
+                    Text(text = "← Back", color = TextSecondary, fontSize = 13.sp)
+                }
+                Spacer(modifier = Modifier.height(8.dp))
             }
-
-            Spacer(modifier = Modifier.height(8.dp))
             Text(text = "Cloudflare AI Accounts", color = CyanPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(4.dp))
             Text(

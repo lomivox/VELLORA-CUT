@@ -142,7 +142,7 @@ object ShortsMetadataGenerator {
         }
 
         // ---- Step 5: writing. Gemini keys first, old Cloudflare system as the backup ----
-        onStatusChange("generating")
+        onStatusChange(if (geminiKeys.isNotEmpty()) "generating_gemini" else "generating")
         val channelName = com.vellora.cut.autogen.network.YouTubeAccounts.selected(context)?.channelTitle?.takeIf { it.isNotBlank() }
             ?: store.channelName
         val style = store.channelStyle.trim()
@@ -160,6 +160,8 @@ object ShortsMetadataGenerator {
         }
 
         if (rawResponse.isNullOrBlank() && accounts.isNotEmpty()) {
+            // Tell the person Gemini did not work this time (or was not set up) so they can see which engine wrote the text.
+            if (geminiKeys.isNotEmpty()) onStatusChange("generating_cloudflare")
             // Cloudflare cannot hear/see the video, so its prompt has no audio/frames parts.
             val cfPrompt = buildPrompt(
                 transcript, keywords, competitorTitles, language, channelName,
@@ -369,7 +371,16 @@ object ShortsMetadataGenerator {
         } else ""
 
         val languageInstruction = if (language.equals("English", ignoreCase = true)) {
-            "Write the Title, Description, Tags and Hashtags in English."
+            "Write the Title, Description, Tags and Hashtags in clear, natural, grammatically correct ENGLISH. " +
+                "The video itself may be spoken in Urdu or another language: in that case translate its MEANING into good " +
+                "English — do NOT leave Urdu words spelled in Roman letters inside the Title/Description/Tags (only proper " +
+                "names are allowed), and never mix two languages in one sentence. Read the Title back: it must read like a " +
+                "natural English YouTube title."
+        } else if (language.equals("Roman Urdu", ignoreCase = true)) {
+            "Write the Title, Description, Tags and Hashtags in natural ROMAN URDU: Urdu written with English letters " +
+                "exactly the way Pakistani YouTubers and viewers type it (for example \"Faqeer se Business tak ka Safar\"). " +
+                "Keep one consistent spelling for each word, keep it grammatically correct, and do not switch to a translated " +
+                "English sentence or to Urdu script."
         } else {
             "Write the Title, Description, Tags and Hashtags in natural, fluent, GRAMMATICALLY CORRECT " +
                 "Urdu (اردو), using proper Urdu script — never Roman Urdu, never English words unless there " +

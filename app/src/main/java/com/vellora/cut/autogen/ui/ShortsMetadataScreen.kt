@@ -53,7 +53,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
     val projects by dao.observeAll().collectAsState(initial = emptyList())
 
     var activeProject by remember { mutableStateOf<ShortMetadataEntity?>(null) }
-    var outputLanguage by remember { mutableStateOf("Urdu") } // "Urdu" or "English"
+    var outputLanguage by remember { mutableStateOf("Urdu") } // "Urdu", "English" or "Roman Urdu"
     var isWorking by remember { mutableStateOf(false) }
     var statusText by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -551,7 +551,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
             } else {
                 SectionCard(title = "Title / Description ki zaban") {
                     ChoiceChips(
-                        options = listOf("Urdu" to "Urdu", "English" to "English"),
+                        options = listOf("Urdu" to "Urdu", "English" to "English", "Roman Urdu" to "Roman Urdu"),
                         selected = outputLanguage,
                         onSelect = { outputLanguage = it }
                     )
@@ -1060,6 +1060,8 @@ private fun statusLabel(status: String): String = when (status) {
     ShortMetadataStatus.TRANSCRIBING -> "Sun kar likha ja raha hai (real transcription)…"
     ShortMetadataStatus.RESEARCHING_KEYWORDS -> "YouTube se real keywords dhoonde ja rahe hain…"
     ShortMetadataStatus.GENERATING -> "AI Title/Description/Tags bana raha hai…"
+    "generating_gemini" -> "Gemini Title/Description/Tags bana raha hai…"
+    "generating_cloudflare" -> "Gemini nahi chala — backup (Cloudflare) se ban raha hai…"
     ShortMetadataStatus.UPLOADING -> "YouTube par upload ho raha hai…"
     else -> "Kaam ho raha hai…"
 }

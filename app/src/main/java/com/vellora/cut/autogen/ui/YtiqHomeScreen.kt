@@ -56,10 +56,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vellora.cut.BuildConfig
+import com.vellora.cut.autogen.data.SecureCredentialStore
 import com.vellora.cut.autogen.network.YouTubeAccounts
+import com.vellora.cut.autogen.network.YouTubeAvatarCache
 import com.vellora.cut.autogen.network.YtVideo
 import com.vellora.cut.update.AppUpdater
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Every screen of the YTIQ app. The bottom bar shows the first five; the menu (hamburger) reaches all of them. */
 enum class YtiqScreen(val label: String, val icon: String) {
@@ -109,6 +113,25 @@ fun YtiqHomeScreen() {
     }
     LaunchedEffect(email) { dash.load(context, email) }
 
+    // Every channel's logo for the channel list: the selected channel's logo is saved when it loads; the others are
+    // fetched once through the public YouTube API (needs the YouTube API key from Settings).
+    var avatarTick by remember { mutableStateOf(0) }
+    LaunchedEffect(accounts) {
+        val apiKey = withContext(Dispatchers.IO) {
+            try { SecureCredentialStore(context.applicationContext).youtubeApiKey } catch (e: Exception) { "" }
+        }
+        val added = withContext(Dispatchers.IO) { YouTubeAvatarCache.fetchMissing(context, accounts.map { it.email }, apiKey) }
+        if (added) avatarTick++
+    }
+    LaunchedEffect(dash.channel) {
+        val url = dash.channel?.avatarUrl
+        val key = email
+        if (url != null && key != null) {
+            YouTubeAvatarCache.put(context, key, url)
+            avatarTick++
+        }
+    }
+
     // Tapping the "new version" notification opens Settings, where the Update card is.
     LaunchedEffect(AppUpdater.openRequest) {
         if (AppUpdater.openRequest) {
@@ -134,7 +157,11 @@ fun YtiqHomeScreen() {
         ?: accounts.firstOrNull { it.email.equals(email, ignoreCase = true) }?.label
     val connectedGmail: String? = accounts.firstOrNull { it.email.equals(email, ignoreCase = true) }?.gmail
 
-    fun openVideo(v: YtVideo) {
+    // Tapping a video plays it inside the app; the browser is only the fallback button in the player.
+    var playingVideo by remember { mutableStateOf<YtVideo?>(null) }
+    fun openVideo(v: YtVideo) { playingVideo = v }
+
+    fun openInBrowser(v: YtVideo) {
         try {
             context.startActivity(
                 Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=${v.id}"))
@@ -283,6 +310,7 @@ fun YtiqHomeScreen() {
                     ) {
                         accounts.forEach { acc ->
                             val isSelected = acc.email.equals(email, ignoreCase = true)
+                            val logo = if (avatarTick >= 0) YouTubeAvatarCache.get(context, acc.email) else null
                             DropdownMenuItem(
                                 text = {
                                     Text(
@@ -291,7 +319,14 @@ fun YtiqHomeScreen() {
                                         maxLines = 1, overflow = TextOverflow.Ellipsis
                                     )
                                 },
-                                leadingIcon = { Text(text = if (isSelected) "✓" else "📺", color = YtText, fontSize = 15.sp) },
+                                leadingIcon = {
+                                    if (logo != null) {
+                                        RemoteImage(url = logo, modifier = Modifier.size(28.dp).clip(CircleShape))
+                                    } else {
+                                        Text(text = "📺", color = YtText, fontSize = 15.sp)
+                                    }
+                                },
+                                trailingIcon = { if (isSelected) Text(text = "✓", color = YtText, fontSize = 15.sp) },
                                 onClick = {
                                     channelMenuOpen = false
                                     YouTubeAccounts.select(context, acc.email)
@@ -331,8 +366,20 @@ fun YtiqHomeScreen() {
                         onOpenCreate = { screen = YtiqScreen.Create },
                         onOpenVideo = { openVideo(it) }
                     )
-                    YtiqScreen.Research -> YtiqResearchScreen(competitorsMode = false, onAsk = { ask(it) })
-                    YtiqScreen.Competitors -> YtiqResearchScreen(competitorsMode = true, onAsk = { ask(it) })
+                    YtiqScreen.Research -> YtiqResearchScreen(
+                        competitorsMode = true,
+                        onAsk = { ask(it) },
+                        onPlay = { id, title -> playingVideo = YtVideo(id, title, null, "", 0L, 0L, 0L) },
+                        ownTitles = dash.videos.map { it.title },
+                        ownChannelTitle = dash.channel?.title
+                    )
+                    YtiqScreen.Competitors -> YtiqResearchScreen(
+                        competitorsMode = true,
+                        onAsk = { ask(it) },
+                        onPlay = { id, title -> playingVideo = YtVideo(id, title, null, "", 0L, 0L, 0L) },
+                        ownTitles = dash.videos.map { it.title },
+                        ownChannelTitle = dash.channel?.title
+                    )
                     YtiqScreen.Thumbnails -> YtiqThumbnailScreen(thumbs)
                     YtiqScreen.Coach -> YtiqCoachScreen(coach = coach, onSend = { send(it) })
                     YtiqScreen.Subscribers -> YtiqSubscribersScreen(dash = dash, onAsk = { ask(it) })
@@ -355,6 +402,15 @@ fun YtiqHomeScreen() {
             }
             YtiqNavBar(selected = screen, onSelect = { go(it) })
         }
+    }
+
+    playingVideo?.let { v ->
+        InAppVideoPlayer(
+            videoId = v.id,
+            title = v.title,
+            onOpenOnYouTube = { openInBrowser(v) },
+            onClose = { playingVideo = null }
+        )
     }
 
     if (showSheet) {

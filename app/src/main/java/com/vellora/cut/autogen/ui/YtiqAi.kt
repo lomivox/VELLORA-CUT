@@ -152,6 +152,7 @@ class YtiqCoachState {
                 "zyada se zyada 8 chhoti lines ya bullets. Sirf neeche diye data par mabni salah do; " +
                 "jo data nahi hai uska andaza mat lagao.\n\n" +
                 ytiqChannelContext(dash.channel, dash.videos) +
+                com.vellora.cut.autogen.network.NicheInsights.coachBlock(context) +
                 "\nPichli baat-cheet:\n" + history + "\n\nUser: " + q + "\nCoach:"
             when (val r = YtiqAi.text(context, prompt)) {
                 is YtiqAiResult.Ok -> msgs.add(YtiqCoachMsg(false, r.text))

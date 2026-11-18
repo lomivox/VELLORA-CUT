@@ -2,6 +2,8 @@ package com.vellora.cut.autogen.ui
 
 import android.content.ContentValues
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.graphics.Bitmap
 import android.os.Build
 import android.provider.MediaStore
@@ -55,10 +57,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vellora.cut.autogen.data.SecureCredentialStore
 import com.vellora.cut.autogen.network.YouTubeCompetitorResearch
+import com.vellora.cut.autogen.network.NicheInsights
+import com.vellora.cut.autogen.network.YouTubeViralResearch
 import com.vellora.cut.autogen.network.YouTubeSuggest
 import com.vellora.cut.autogen.network.YtVideo
 import kotlinx.coroutines.Dispatchers
@@ -302,8 +307,29 @@ fun YtiqThumbnailScreen(thumbs: SnapshotStateList<Bitmap>) {
 
 // ---------------------------------------------------------------- Research + Competitors
 
+/** The last research results, kept in memory for a few hours so opening the tab again does not spend YouTube quota. */
+private object ResearchCache {
+    var query: String = ""
+    var savedAt: Long = 0L
+    var suggestions: List<String> = emptyList()
+    var ranked: List<String> = emptyList()
+    var titles: List<String> = emptyList()
+    var note: String? = null
+    var viral: List<YouTubeViralResearch.ViralVideo> = emptyList()
+    var big: List<YouTubeViralResearch.BigChannel> = emptyList()
+    var viralNote: String? = null
+
+    fun fresh(q: String): Boolean = query == q && System.currentTimeMillis() - savedAt < 6L * 60 * 60 * 1000
+}
+
 @Composable
-fun YtiqResearchScreen(competitorsMode: Boolean, onAsk: (String) -> Unit) {
+fun YtiqResearchScreen(
+    competitorsMode: Boolean,
+    onAsk: (String) -> Unit,
+    onPlay: (videoId: String, title: String) -> Unit = { _, _ -> },
+    ownTitles: List<String> = emptyList(),
+    ownChannelTitle: String? = null
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var seed by remember { mutableStateOf("") }
@@ -313,10 +339,26 @@ fun YtiqResearchScreen(competitorsMode: Boolean, onAsk: (String) -> Unit) {
     var ranked by remember { mutableStateOf<List<String>>(emptyList()) }
     var titles by remember { mutableStateOf<List<String>>(emptyList()) }
     var note by remember { mutableStateOf<String?>(null) }
+    var viral by remember { mutableStateOf<List<YouTubeViralResearch.ViralVideo>>(emptyList()) }
+    var bigChannels by remember { mutableStateOf<List<YouTubeViralResearch.BigChannel>>(emptyList()) }
+    var viralNote by remember { mutableStateOf<String?>(null) }
+    // The topic worked out from this channel's own titles (searched automatically when the screen opens).
+    var autoQuery by remember { mutableStateOf("") }
 
-    fun search() {
+    fun search(force: Boolean = true) {
         val s = seed.trim()
         if (s.isEmpty() || busy) return
+        if (!force && ResearchCache.fresh(s)) {
+            suggestions = ResearchCache.suggestions
+            ranked = ResearchCache.ranked
+            titles = ResearchCache.titles
+            note = ResearchCache.note
+            viral = ResearchCache.viral
+            bigChannels = ResearchCache.big
+            viralNote = ResearchCache.viralNote
+            searched = true
+            return
+        }
         scope.launch {
             busy = true
             note = null
@@ -332,8 +374,56 @@ fun YtiqResearchScreen(competitorsMode: Boolean, onAsk: (String) -> Unit) {
                 r == null -> "Competitor data nahi mila (key ya internet check karen)."
                 else -> null
             }
+            if (competitorsMode && key.isNotBlank()) {
+                val outcome = withContext(Dispatchers.IO) { YouTubeViralResearch.research(s, key) }
+                val own = ownChannelTitle?.trim().orEmpty()
+                // Our own channel is not a competitor.
+                viral = outcome.result?.videos.orEmpty()
+                    .filter { own.isBlank() || !it.channelTitle.equals(own, ignoreCase = true) }.take(10)
+                bigChannels = outcome.result?.channels.orEmpty()
+                    .filter { own.isBlank() || !it.title.equals(own, ignoreCase = true) }.take(8)
+                viralNote = outcome.error
+                // What was learned about this channel's own niche is kept, so the AI can use it later (title writer + coach).
+                if (s == autoQuery && viral.isNotEmpty()) {
+                    NicheInsights.save(
+                        context.applicationContext,
+                        NicheInsights.Snapshot(
+                            savedAt = System.currentTimeMillis(),
+                            niche = s,
+                            titles = viral.filter { (it.score ?: 0.0) >= 1.0 }.take(10).map { it.title }
+                                .ifEmpty { viral.take(6).map { it.title } },
+                            channels = bigChannels.map { it.title }
+                        )
+                    )
+                }
+            } else {
+                viral = emptyList()
+                bigChannels = emptyList()
+                viralNote = null
+            }
+            ResearchCache.query = s
+            ResearchCache.savedAt = System.currentTimeMillis()
+            ResearchCache.suggestions = suggestions
+            ResearchCache.ranked = ranked
+            ResearchCache.titles = titles
+            ResearchCache.note = note
+            ResearchCache.viral = viral
+            ResearchCache.big = bigChannels
+            ResearchCache.viralNote = viralNote
             searched = true
             busy = false
+        }
+    }
+
+    // Opens with the competition for THIS channel's topic already shown — no search needed.
+    LaunchedEffect(ownTitles.isNotEmpty()) {
+        if (competitorsMode && ownTitles.isNotEmpty() && seed.isBlank() && autoQuery.isBlank()) {
+            val q = NicheInsights.nicheQuery(ownTitles, ownChannelTitle)
+            if (q.isNotBlank()) {
+                autoQuery = q
+                seed = q
+                search(force = false)
+            }
         }
     }
 
@@ -345,12 +435,48 @@ fun YtiqResearchScreen(competitorsMode: Boolean, onAsk: (String) -> Unit) {
             if (competitorsMode) "Topic likhein, dekhein abhi kaun si videos rank kar rahi hen."
             else "Keyword ya topic likhein, asal YouTube search suggestions milengi."
         )
+        if (autoQuery.isNotBlank() && seed == autoQuery) {
+            YqNote("Aap ke channel ki videos se topic khud chuna gaya: \"$autoQuery\". Badal kar dobara Search kar sakte hain.")
+        }
         YqInput(value = seed, onChange = { seed = it }, hint = "Search keywords…", modifier = Modifier.fillMaxWidth(), onSend = { search() })
         YqButton(if (busy) "Dhoond raha hai…" else "Search", enabled = !busy && seed.isNotBlank()) { search() }
         if (busy) YqBusy("Data aa raha hai…")
         note?.let { YqNote(it) }
 
         if (searched) {
+            if (competitorsMode) {
+                viralNote?.let { YqNote(it) }
+                if (viral.isNotEmpty()) {
+                    YqCard {
+                        YqTitle("🔥 Viral videos (pichle 30 din)")
+                        YqNote("Score = views ÷ channel ke subscribers. 5x ka matlab: video ko channel ke subscribers se 5 guna zyada views mile. Video par tap = app mein chalaye, 🤖 = AI us ka andaaz seekh kar aap ke liye title banaye.")
+                        viral.forEach { v ->
+                            ViralRow(
+                                v = v,
+                                onPlay = { onPlay(v.id, v.title) },
+                                onAsk = { onAsk("Ye video is topic par viral hai: \"${v.title}\". Is ke title ka andaaz (shuru ke lafz, sawal ya number) samjha kar mere channel ke liye isi andaaz mein, lekin apne alfaz mein, 3 title do. Is channel ka naam use mat karna.") }
+                            )
+                        }
+                    }
+                }
+                if (bigChannels.isNotEmpty()) {
+                    YqCard {
+                        YqTitle("📺 Bade channels (is topic par active)")
+                        bigChannels.forEach { c ->
+                            ChannelRow(c) {
+                                try {
+                                    context.startActivity(
+                                        Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/channel/${c.id}"))
+                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    )
+                                } catch (e: Exception) {
+                                    // no app can open the link
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             if (competitorsMode && titles.isNotEmpty()) {
                 YqCard {
                     YqTitle("Top videos (abhi rank par)")
@@ -379,6 +505,42 @@ fun YtiqResearchScreen(competitorsMode: Boolean, onAsk: (String) -> Unit) {
             YqNote("Kisi bhi line par tap karen to AI Coach us par salah dega.")
         }
         Spacer(modifier = Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun ViralRow(v: YouTubeViralResearch.ViralVideo, onPlay: () -> Unit, onAsk: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f).clickable(onClick = onPlay)) {
+            Text(text = v.title, color = YtText, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            val subsText = v.subscribers?.let { "${formatCount(it)} subs" } ?: "subs hidden"
+            val scoreText = v.score?.let {
+                " • " + (if (it >= 10) it.toInt().toString() else String.format(java.util.Locale.US, "%.1f", it)) + "x"
+            } ?: ""
+            Text(
+                text = "${v.channelTitle} • $subsText • ${formatCount(v.views)} views$scoreText",
+                color = YtMuted, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis
+            )
+        }
+        Text(
+            text = "🤖",
+            fontSize = 18.sp,
+            modifier = Modifier.clickable(onClick = onAsk).padding(start = 12.dp, top = 6.dp, bottom = 6.dp)
+        )
+    }
+}
+
+@Composable
+private fun ChannelRow(c: YouTubeViralResearch.BigChannel, onOpen: () -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(vertical = 8.dp)) {
+        Text(text = c.title, color = YtText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(
+            text = "${formatCount(c.subscribers)} subscribers • is topic par ${c.videosFound} video",
+            color = YtMuted, fontSize = 11.sp
+        )
     }
 }
 

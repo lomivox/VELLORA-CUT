@@ -8,7 +8,9 @@ import com.vellora.cut.autogen.network.CloudflareApiException
 import com.vellora.cut.autogen.network.GeminiApiException
 import com.vellora.cut.autogen.network.GeminiClient
 import com.vellora.cut.autogen.network.YouTubeCompetitorResearch
+import com.vellora.cut.autogen.network.NicheInsights
 import com.vellora.cut.autogen.network.YouTubeSuggest
+import com.vellora.cut.autogen.network.YouTubeViralResearch
 import com.vellora.cut.autogen.render.VideoAudioExtractor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -142,6 +144,23 @@ object ShortsMetadataGenerator {
             competitorTitles = emptyList()
         }
 
+        // Titles of videos that are VIRAL on this topic right now (many views per subscriber) join the style references,
+        // so the new title borrows what works — never the channel names, and never a copy.
+        val refTokens = tokens("$hint $transcript")
+        val viralTitles: List<String> = if (seed.isNotBlank() && youtubeApiKey.isNotBlank()) {
+            try {
+                YouTubeViralResearch.research(seed, youtubeApiKey, maxVideos = 15).result?.videos.orEmpty()
+                    .filter { (it.score ?: 0.0) >= 1.0 }
+                    .filter { refTokens.size >= 40 || tokens(it.title).any { t -> t in refTokens } }
+                    .take(6).map { it.title }
+            } catch (e: Exception) {
+                emptyList()
+            }
+        } else emptyList()
+        // What the app learned about this channel's niche (saved by the Research screen) also guides the style.
+        val nicheTitles = NicheInsights.load(context)?.titles.orEmpty().take(4)
+        val styleTitles = (competitorTitles + viralTitles + nicheTitles).distinct()
+
         // ---- Step 5: writing. Gemini keys first, old Cloudflare system as the backup ----
         onStatusChange(if (geminiKeys.isNotEmpty()) "generating_gemini" else "generating")
         val channelName = com.vellora.cut.autogen.network.YouTubeAccounts.selected(context)?.channelTitle?.takeIf { it.isNotBlank() }
@@ -154,7 +173,7 @@ object ShortsMetadataGenerator {
 
         if (geminiKeys.isNotEmpty()) {
             val geminiPrompt = buildPrompt(
-                transcript, keywords, competitorTitles, language, channelName,
+                transcript, keywords, styleTitles, language, channelName,
                 hint, style, hasSpeech, hasAudio = audioForGemini != null, hasVisuals = frames.isNotEmpty()
             )
             val out = runGemini(geminiKeys, geminiPrompt, audioForGemini, frames)
@@ -172,7 +191,7 @@ object ShortsMetadataGenerator {
             if (geminiKeys.isNotEmpty()) onStatusChange("generating_cloudflare:" + (lastError ?: "").take(90))
             // Cloudflare cannot hear/see the video, so its prompt has no audio/frames parts.
             val cfPrompt = buildPrompt(
-                transcript, keywords, competitorTitles, language, channelName,
+                transcript, keywords, styleTitles, language, channelName,
                 hint, style, hasSpeech, hasAudio = false, hasVisuals = false
             )
             val client = CloudflareAiClient()

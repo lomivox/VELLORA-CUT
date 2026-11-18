@@ -371,14 +371,18 @@ fun YtiqHomeScreen() {
                         onAsk = { ask(it) },
                         onPlay = { id, title -> playingVideo = YtVideo(id, title, null, "", 0L, 0L, 0L) },
                         ownTitles = dash.videos.map { it.title },
-                        ownChannelTitle = dash.channel?.title
+                        ownChannelTitle = dash.channel?.title,
+                        ownSubscribers = dash.channel?.takeIf { !it.subsHidden }?.subscribers,
+                        ownAccountKey = email
                     )
                     YtiqScreen.Competitors -> YtiqResearchScreen(
                         competitorsMode = true,
                         onAsk = { ask(it) },
                         onPlay = { id, title -> playingVideo = YtVideo(id, title, null, "", 0L, 0L, 0L) },
                         ownTitles = dash.videos.map { it.title },
-                        ownChannelTitle = dash.channel?.title
+                        ownChannelTitle = dash.channel?.title,
+                        ownSubscribers = dash.channel?.takeIf { !it.subsHidden }?.subscribers,
+                        ownAccountKey = email
                     )
                     YtiqScreen.Thumbnails -> YtiqThumbnailScreen(thumbs)
                     YtiqScreen.Coach -> YtiqCoachScreen(coach = coach, onSend = { send(it) })

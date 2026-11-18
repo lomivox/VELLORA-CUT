@@ -34,10 +34,16 @@ object YouTubeCompetitorResearch {
 
     /** Returns null (never throws) if the API key is missing/invalid or the
      * request fails — caller falls back to [YouTubeSuggest] in that case. */
-    fun research(seed: String, apiKey: String, maxVideos: Int = 20): Result? {
+    fun research(
+        seed: String,
+        apiKey: String,
+        maxVideos: Int = 20,
+        regionCode: String? = null,
+        relevanceLanguage: String? = null
+    ): Result? {
         if (apiKey.isBlank() || seed.isBlank()) return null
         return try {
-            val videoIds = searchTopVideos(seed, apiKey, maxVideos)
+            val videoIds = searchTopVideos(seed, apiKey, maxVideos, regionCode, relevanceLanguage)
             if (videoIds.isEmpty()) return null
             fetchTagsAndTitles(videoIds, apiKey)
         } catch (e: Exception) {
@@ -45,11 +51,20 @@ object YouTubeCompetitorResearch {
         }
     }
 
-    private fun searchTopVideos(seed: String, apiKey: String, maxVideos: Int): List<String> {
+    private fun searchTopVideos(
+        seed: String,
+        apiKey: String,
+        maxVideos: Int,
+        regionCode: String?,
+        relevanceLanguage: String?
+    ): List<String> {
         val encoded = URLEncoder.encode(seed.take(100), "UTF-8")
         val url = "https://www.googleapis.com/youtube/v3/search" +
             "?part=snippet&type=video&order=relevance&maxResults=$maxVideos" +
-            "&q=$encoded&key=$apiKey"
+            "&q=$encoded" +
+            (if (!regionCode.isNullOrBlank()) "&regionCode=$regionCode" else "") +
+            (if (!relevanceLanguage.isNullOrBlank()) "&relevanceLanguage=$relevanceLanguage" else "") +
+            "&key=$apiKey"
         val request = Request.Builder().url(url).build()
 
         client.newCall(request).execute().use { response ->

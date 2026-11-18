@@ -328,7 +328,9 @@ fun YtiqResearchScreen(
     onAsk: (String) -> Unit,
     onPlay: (videoId: String, title: String) -> Unit = { _, _ -> },
     ownTitles: List<String> = emptyList(),
-    ownChannelTitle: String? = null
+    ownChannelTitle: String? = null,
+    ownSubscribers: Long? = null,
+    ownAccountKey: String? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -344,11 +346,18 @@ fun YtiqResearchScreen(
     var viralNote by remember { mutableStateOf<String?>(null) }
     // The topic worked out from this channel's own titles (searched automatically when the screen opens).
     var autoQuery by remember { mutableStateOf("") }
+    // What the AI understood about this channel (topic, audience search phrases, country) — used for every search.
+    var profile by remember { mutableStateOf<ChannelNiche.Profile?>(null) }
+    var autoQueries by remember { mutableStateOf<List<String>>(emptyList()) }
+    var channelsNote by remember { mutableStateOf<String?>(null) }
 
     fun search(force: Boolean = true) {
         val s = seed.trim()
         if (s.isEmpty() || busy) return
-        if (!force && ResearchCache.fresh(s)) {
+        // The channel's own phrases are searched together when the topic is the automatic one; a typed phrase alone otherwise.
+        val queries = if (s == autoQuery && autoQueries.isNotEmpty()) autoQueries else listOf(s)
+        val cacheKey = queries.joinToString("|")
+        if (!force && ResearchCache.fresh(cacheKey)) {
             suggestions = ResearchCache.suggestions
             ranked = ResearchCache.ranked
             titles = ResearchCache.titles
@@ -366,7 +375,13 @@ fun YtiqResearchScreen(
                 try { SecureCredentialStore(context.applicationContext).youtubeApiKey } catch (e: Exception) { "" }
             }
             suggestions = withContext(Dispatchers.IO) { YouTubeSuggest.fetch(s) }
-            val r = if (key.isBlank()) null else withContext(Dispatchers.IO) { YouTubeCompetitorResearch.research(s, key) }
+            // The channel's profile (country, language, topic words) keeps every search inside this channel's world.
+            val p = if (competitorsMode && key.isNotBlank()) {
+                profile ?: ChannelNiche.load(context, ownAccountKey, ownChannelTitle, ownTitles, key).also { profile = it }
+            } else profile
+            val r = if (key.isBlank()) null else withContext(Dispatchers.IO) {
+                YouTubeCompetitorResearch.research(s, key, regionCode = p?.country, relevanceLanguage = p?.relevanceLanguage)
+            }
             ranked = r?.rankedKeywords.orEmpty().take(15)
             titles = r?.competitorTitles.orEmpty().take(10)
             note = when {
@@ -375,14 +390,27 @@ fun YtiqResearchScreen(
                 else -> null
             }
             if (competitorsMode && key.isNotBlank()) {
-                val outcome = withContext(Dispatchers.IO) { YouTubeViralResearch.research(s, key) }
+                val options = YouTubeViralResearch.Options(
+                    regionCode = p?.country,
+                    relevanceLanguage = p?.relevanceLanguage,
+                    days = 90,
+                    order = "relevance"
+                )
+                val outcome = withContext(Dispatchers.IO) {
+                    YouTubeViralResearch.researchQueries(queries, key, ownSubscribers, options, p?.keywords.orEmpty())
+                }
+                val channelOutcome = withContext(Dispatchers.IO) {
+                    YouTubeViralResearch.similarChannels(queries.first(), key, ownSubscribers, options)
+                }
                 val own = ownChannelTitle?.trim().orEmpty()
                 // Our own channel is not a competitor.
                 viral = outcome.result?.videos.orEmpty()
                     .filter { own.isBlank() || !it.channelTitle.equals(own, ignoreCase = true) }.take(10)
-                bigChannels = outcome.result?.channels.orEmpty()
-                    .filter { own.isBlank() || !it.title.equals(own, ignoreCase = true) }.take(8)
+                bigChannels = channelOutcome.result?.channels.orEmpty()
+                    .filter { own.isBlank() || !it.title.equals(own, ignoreCase = true) }.take(10)
+                    .ifEmpty { outcome.result?.channels.orEmpty().filter { own.isBlank() || !it.title.equals(own, ignoreCase = true) }.take(8) }
                 viralNote = outcome.error
+                channelsNote = if (bigChannels.isEmpty()) channelOutcome.error else null
                 // What was learned about this channel's own niche is kept, so the AI can use it later (title writer + coach).
                 if (s == autoQuery && viral.isNotEmpty()) {
                     NicheInsights.save(
@@ -401,7 +429,7 @@ fun YtiqResearchScreen(
                 bigChannels = emptyList()
                 viralNote = null
             }
-            ResearchCache.query = s
+            ResearchCache.query = cacheKey
             ResearchCache.savedAt = System.currentTimeMillis()
             ResearchCache.suggestions = suggestions
             ResearchCache.ranked = ranked
@@ -415,13 +443,21 @@ fun YtiqResearchScreen(
         }
     }
 
-    // Opens with the competition for THIS channel's topic already shown — no search needed.
+    // Opens with the competition for THIS channel already shown: the AI first understands what the channel is about
+    // (from its own videos), then those exact audience phrases are searched — no typing needed.
     LaunchedEffect(ownTitles.isNotEmpty()) {
         if (competitorsMode && ownTitles.isNotEmpty() && seed.isBlank() && autoQuery.isBlank()) {
-            val q = NicheInsights.nicheQuery(ownTitles, ownChannelTitle)
-            if (q.isNotBlank()) {
-                autoQuery = q
-                seed = q
+            busy = true
+            val key = withContext(Dispatchers.IO) {
+                try { SecureCredentialStore(context.applicationContext).youtubeApiKey } catch (e: Exception) { "" }
+            }
+            val p = ChannelNiche.load(context, ownAccountKey, ownChannelTitle, ownTitles, key)
+            busy = false
+            profile = p
+            if (p.queries.isNotEmpty()) {
+                autoQueries = p.queries
+                autoQuery = p.queries.first()
+                seed = autoQuery
                 search(force = false)
             }
         }
@@ -436,7 +472,12 @@ fun YtiqResearchScreen(
             else "Keyword ya topic likhein, asal YouTube search suggestions milengi."
         )
         if (autoQuery.isNotBlank() && seed == autoQuery) {
-            YqNote("Aap ke channel ki videos se topic khud chuna gaya: \"$autoQuery\". Badal kar dobara Search kar sakte hain.")
+            val p = profile
+            YqNote(
+                (if (p != null && p.niche.isNotBlank()) "Aap ke channel ka topic: ${p.niche}\n" else "") +
+                    "Aap ke channel ki videos dekh kar khud ye phrases chune gaye: " + autoQueries.joinToString("  •  ") +
+                    "\nBadal kar apna search bhi kar sakte hain — wo bhi aap ke channel ki zaban/mulk ke hisaab se chalega."
+            )
         }
         YqInput(value = seed, onChange = { seed = it }, hint = "Search keywords…", modifier = Modifier.fillMaxWidth(), onSend = { search() })
         YqButton(if (busy) "Dhoond raha hai…" else "Search", enabled = !busy && seed.isNotBlank()) { search() }
@@ -459,11 +500,23 @@ fun YtiqResearchScreen(
                         }
                     }
                 }
+                if (viral.isNotEmpty()) {
+                    YqButton("💡 In videos se mere channel ke liye 5 idea") {
+                        onAsk(
+                            "Mere channel ke haal ke titles:\n" + ownTitles.take(8).joinToString("\n") { "- $it" } +
+                                "\n\nIs topic par abhi ye videos viral hain:\n" + viral.take(6).joinToString("\n") { "- ${it.title}" } +
+                                "\n\nIn viral videos ke asal pehlu (angle) samajh kar mere channel ke liye 5 nayi video ideas do. " +
+                                "Har idea ka title aur ek line mein wajah ke ye kyun chalegi. Kisi competitor ka title ya channel ka naam copy mat karna."
+                        )
+                    }
+                }
+                channelsNote?.let { YqNote(it) }
                 if (bigChannels.isNotEmpty()) {
                     YqCard {
-                        YqTitle("📺 Bade channels (is topic par active)")
+                        YqTitle("📺 Aap jaise competitor channels")
+                        YqNote("Pehle wo channels jo aap ke size ke qareeb hain, phir bade. Tap = channel kholein.")
                         bigChannels.forEach { c ->
-                            ChannelRow(c) {
+                            ChannelRow(c, ownSubscribers) {
                                 try {
                                     context.startActivity(
                                         Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/channel/${c.id}"))
@@ -534,13 +587,14 @@ private fun ViralRow(v: YouTubeViralResearch.ViralVideo, onPlay: () -> Unit, onA
 }
 
 @Composable
-private fun ChannelRow(c: YouTubeViralResearch.BigChannel, onOpen: () -> Unit) {
+private fun ChannelRow(c: YouTubeViralResearch.BigChannel, ownSubs: Long?, onOpen: () -> Unit) {
     Column(modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(vertical = 8.dp)) {
         Text(text = c.title, color = YtText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(
-            text = "${formatCount(c.subscribers)} subscribers • is topic par ${c.videosFound} video",
-            color = YtMuted, fontSize = 11.sp
-        )
+        val ratio = if (ownSubs != null && ownSubs > 0) {
+            val r = c.subscribers.toDouble() / ownSubs.toDouble()
+            " • aap se " + (if (r >= 10) r.toInt().toString() else String.format(java.util.Locale.US, "%.1f", r)) + " guna"
+        } else ""
+        Text(text = "${formatCount(c.subscribers)} subscribers$ratio", color = YtMuted, fontSize = 11.sp)
     }
 }
 

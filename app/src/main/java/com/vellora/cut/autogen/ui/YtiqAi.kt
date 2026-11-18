@@ -9,10 +9,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.vellora.cut.autogen.data.SecureCredentialStore
 import com.vellora.cut.autogen.network.CloudflareAiClient
+import com.vellora.cut.autogen.network.GeminiClient
 import com.vellora.cut.autogen.network.YtChannel
 import com.vellora.cut.autogen.network.YtVideo
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 sealed class YtiqAiResult {
@@ -29,15 +31,33 @@ object YtiqAi {
     private val client = CloudflareAiClient()
 
     suspend fun text(context: Context, prompt: String): YtiqAiResult = withContext(Dispatchers.IO) {
-        val accounts = try {
-            SecureCredentialStore(context.applicationContext).accounts
+        val store = try {
+            SecureCredentialStore(context.applicationContext)
         } catch (e: Exception) {
-            emptyList()
+            null
         }
-        if (accounts.isEmpty()) {
-            return@withContext YtiqAiResult.Fail("Pehle Settings mein Cloudflare account jodein")
+        val accounts = try { store?.accounts.orEmpty() } catch (e: Exception) { emptyList() }
+        val geminiKeys = try { store?.geminiKeys.orEmpty() } catch (e: Exception) { emptyList() }
+        if (accounts.isEmpty() && geminiKeys.isEmpty()) {
+            return@withContext YtiqAiResult.Fail("Pehle Settings mein Gemini key ya Cloudflare account jodein")
         }
         var last = "AI jawab nahi de saka"
+        // Gemini first: every key gets 2 real tries before the next key; Cloudflare accounts are the backup.
+        if (geminiKeys.isNotEmpty()) {
+            val gemini = GeminiClient()
+            for (key in geminiKeys) {
+                for (attempt in 0..1) {
+                    try {
+                        return@withContext YtiqAiResult.Ok(gemini.generate(key, prompt).trim())
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        last = "Gemini: " + (e.message ?: "error")
+                    }
+                    if (attempt == 0) delay(1500)
+                }
+            }
+        }
         for (a in accounts) {
             try {
                 return@withContext YtiqAiResult.Ok(client.generateText(prompt, a.accountId, a.apiToken).trim())

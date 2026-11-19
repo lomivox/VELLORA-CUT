@@ -31,6 +31,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -52,6 +53,7 @@ import com.vellora.cut.autogen.network.YouTubeAuthManager
 import com.vellora.cut.autogen.network.YouTubeVideoManager
 import com.vellora.cut.autogen.network.YtResult
 import kotlinx.coroutines.launch
+import org.json.JSONArray
 
 private fun normalize(s: String): String = s.lowercase()
 
@@ -150,6 +152,7 @@ fun YtiqVideoManagerScreen(
     var query by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf<ManagedVideo?>(null) }
     var showDuplicates by remember { mutableStateOf(false) }
+    var bulkGroups by remember { mutableStateOf<List<List<ManagedVideo>>?>(null) }
 
     /** A fresh login token for the selected channel, or null (the reason goes into [error]). */
     suspend fun token(): String? {
@@ -244,13 +247,26 @@ fun YtiqVideoManagerScreen(
             }
             LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (showDuplicates) {
+                    if (groups.isNotEmpty()) {
+                        item(key = "bulkAll") {
+                            ActionButton("🤖 Sab groups ke titles naye banayein (${groups.sumOf { it.videos.size }} videos)") {
+                                bulkGroups = groups.map { it.videos }
+                            }
+                        }
+                    }
                     groups.forEachIndexed { gi, g ->
                         item(key = "header$gi") {
-                            Text(
-                                text = "Group ${gi + 1} • ${g.videos.size} videos\n" + g.reasons.joinToString(" • "),
-                                color = YtText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(top = 8.dp)
-                            )
+                            Column(modifier = Modifier.padding(top = 8.dp)) {
+                                Text(
+                                    text = "Group ${gi + 1} • ${g.videos.size} videos\n" + g.reasons.joinToString(" • "),
+                                    color = YtText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = "🤖 Sirf is group ke titles naye banayein",
+                                    color = YtAccent, fontSize = 13.sp,
+                                    modifier = Modifier.clickable { bulkGroups = listOf(g.videos) }.padding(vertical = 6.dp)
+                                )
+                            }
                         }
                         val mostViews = g.videos.maxByOrNull { it.views }
                         val oldest = g.videos.minByOrNull { it.publishedAt }
@@ -272,6 +288,18 @@ fun YtiqVideoManagerScreen(
         }
     }
 
+    bulkGroups?.let { gs ->
+        BulkRetitleDialog(
+            groups = gs,
+            allVideos = videos,
+            tokenProvider = { token() },
+            onUpdated = { updated ->
+                videos = videos.map { v -> updated.firstOrNull { it.id == v.id } ?: v }
+            },
+            onDismiss = { bulkGroups = null }
+        )
+    }
+
     editing?.let { current ->
         EditVideoDialog(
             video = current,
@@ -287,6 +315,250 @@ fun YtiqVideoManagerScreen(
             },
             onDismiss = { editing = null }
         )
+    }
+}
+
+
+private class BulkRow(
+    val video: ManagedVideo,
+    val kept: Boolean,
+    newTitle: String,
+    val newDesc: String,
+    apply: Boolean
+) {
+    var newTitle by mutableStateOf(newTitle)
+    var apply by mutableStateOf(apply)
+}
+
+private fun parseBulk(text: String): Map<String, Pair<String, String>> {
+    val start = text.indexOf('[')
+    val end = text.lastIndexOf(']')
+    if (start < 0 || end <= start) return emptyMap()
+    return try {
+        val arr = JSONArray(text.substring(start, end + 1))
+        val out = HashMap<String, Pair<String, String>>()
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val id = o.optString("id")
+            if (id.isNotBlank()) out[id] = o.optString("title").trim().take(100) to o.optString("description").trim()
+        }
+        out
+    } catch (e: Exception) {
+        emptyMap()
+    }
+}
+
+/**
+ * Gives every duplicate its OWN new title (and description): the AI looks at each video's present title, description
+ * and tags and writes different, related ones, so no two videos stay the same. Nothing is saved until the person
+ * reviews (and can edit) the proposals and presses apply; the videos are then updated one after another.
+ */
+@Composable
+private fun BulkRetitleDialog(
+    groups: List<List<ManagedVideo>>,
+    allVideos: List<ManagedVideo>,
+    tokenProvider: suspend () -> String?,
+    onUpdated: (List<ManagedVideo>) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val rows = remember { mutableStateListOf<BulkRow>() }
+    var keepOldest by remember { mutableStateOf(true) }
+    var changeDesc by remember { mutableStateOf(true) }
+    var busy by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var started by remember { mutableStateOf(false) }
+
+    fun generate() {
+        if (busy) return
+        scope.launch {
+            busy = true
+            message = null
+            rows.clear()
+            var failed = 0
+            groups.forEachIndexed { gi, group ->
+                // group is sorted oldest first
+                val targets = if (keepOldest) group.drop(1) else group
+                if (group.isNotEmpty() && keepOldest) {
+                    rows.add(BulkRow(group.first(), true, group.first().title, group.first().description, false))
+                }
+                if (targets.isEmpty()) return@forEachIndexed
+                message = "AI likh raha hai… group ${gi + 1}/${groups.size}"
+                val prompt = buildString {
+                    append("Neeche ek hi video ki kai copies (duplicate videos) hain jin ke title ya description ek jaise hain. ")
+                    append("Har video ke liye ALAG naya title aur ALAG nayi description likho, taake koi bhi do video ek jaisi na rahein, ")
+                    append("lekin sab video ke asal topic se related rahein.\n")
+                    append("Qaide:\n")
+                    append("- Har title 100 huroof se kam, clickable, usi zaban aur usi script mein jis mein purane titles hain.\n")
+                    append("- Har video ka title alag pehlu (angle) se ho aur alag lafz se shuru ho; purane title ya ek doosre ki nakal na ho.\n")
+                    append("- Asal topic mat badlo. Koi nayi kahani, naam, dawa ya wada mat jodo jo purane title/description mein nahi.\n")
+                    append("- Har description alag ho (2 se 3 chhote paragraphs) aur kisi doosri description ke jumle dohrao mat.\n")
+                    if (keepOldest) {
+                        append("- Ye video jaisi hai waisi hi rahegi, naye titles is se bhi alag hon: \"${group.first().title}\"\n")
+                    }
+                    append("\nVideos jin ke liye likhna hai:\n")
+                    targets.forEachIndexed { i, v ->
+                        append("${i + 1}) ID: ${v.id} | Title: ${v.title} | Description: ${v.description.take(400).replace('\n', ' ')} | Tags: ${v.tags.take(8).joinToString(", ")}\n")
+                    }
+                    append("\nJawab sirf JSON array mein do, koi aur lafz nahi:\n")
+                    append("[{\"id\":\"<ID>\",\"title\":\"...\",\"description\":\"...\"}]")
+                }
+                val parsed = when (val ai = YtiqAi.text(context, prompt)) {
+                    is YtiqAiResult.Ok -> parseBulk(ai.text)
+                    is YtiqAiResult.Fail -> {
+                        message = "⚠ ${ai.message}"
+                        emptyMap()
+                    }
+                }
+                targets.forEach { v ->
+                    val p = parsed[v.id]
+                    if (p != null && p.first.isNotBlank()) {
+                        rows.add(BulkRow(v, false, p.first, p.second, true))
+                    } else {
+                        failed++
+                        rows.add(BulkRow(v, false, v.title, v.description, false))
+                    }
+                }
+            }
+            message = if (failed > 0) "⚠ $failed videos ka naya title AI se nahi mila — wo chhoot gayi hain, dobara banayein ya khud likhein"
+            else "Dekh lein, jo badalna ho theek karein, phir Apply dabayein"
+            busy = false
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (!started) {
+            started = true
+            generate()
+        }
+    }
+
+    fun applyAll() {
+        if (busy) return
+        val chosen = rows.filter { it.apply && !it.kept }
+        if (chosen.isEmpty()) {
+            message = "⚠ Koi video chuni nahi gayi"
+            return
+        }
+        // Every title must be valid and different from every other video's title.
+        val others = allVideos.filter { v -> chosen.none { it.video.id == v.id } }.map { normText(it.title) }.toSet()
+        val seen = HashSet<String>()
+        for (r in chosen) {
+            val t = r.newTitle.trim()
+            val problem = YouTubeVideoManager.validate(t, r.video.description, r.video.tags)
+            if (problem != null) {
+                message = "⚠ \"${r.video.title.take(30)}\": $problem"
+                return
+            }
+            val n = normText(t)
+            if (n == normText(r.video.title) || n in others || !seen.add(n)) {
+                message = "⚠ Title ek jaisa hai: \"${t.take(40)}\" — har video ka title alag hona chahiye"
+                return
+            }
+        }
+        scope.launch {
+            busy = true
+            val token = tokenProvider()
+            if (token == null) {
+                message = "⚠ Login nahi mila — Settings mein channel Remove kar ke dobara jodein"
+                busy = false
+                return@launch
+            }
+            val updated = ArrayList<ManagedVideo>()
+            var firstError: String? = null
+            chosen.forEachIndexed { i, r ->
+                message = "Save ho raha hai… ${i + 1}/${chosen.size}"
+                val desc = if (changeDesc && r.newDesc.isNotBlank()) r.newDesc else r.video.description
+                when (val res = YouTubeVideoManager.update(token, r.video, r.newTitle.trim(), desc, r.video.tags)) {
+                    is YtResult.Ok -> updated.add(res.value)
+                    is YtResult.Fail -> if (firstError == null) firstError = res.message
+                }
+            }
+            busy = false
+            // What was saved is shown in the list straight away; rows that worked are not applied twice.
+            onUpdated(updated)
+            val savedIds = updated.map { it.id }.toSet()
+            rows.forEach { if (it.video.id in savedIds) it.apply = false }
+            if (firstError == null) {
+                onDismiss()
+            } else {
+                message = "⚠ ${updated.size} video save hui, baqi nahi hui: $firstError"
+            }
+        }
+    }
+
+    Dialog(onDismissRequest = { if (!busy) onDismiss() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(YtBg)
+                .statusBarsPadding()
+                .imePadding()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "Naye titles (duplicates ke liye)", color = YtText, fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = "✕", color = YtText, fontSize = 20.sp,
+                    modifier = Modifier.clickable(enabled = !busy) { onDismiss() }.padding(8.dp)
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ModeChip(if (keepOldest) "✓ Sab se purani na badlein" else "Sab se purani na badlein", keepOldest) { if (!busy) keepOldest = !keepOldest }
+                ModeChip(if (changeDesc) "✓ Description bhi" else "Description bhi", changeDesc) { if (!busy) changeDesc = !changeDesc }
+            }
+            message?.let { Text(text = it, color = YtText, fontSize = 13.sp) }
+            ActionButton(if (busy) "Ruko…" else "🔄 Naye titles banayein", enabled = !busy) { generate() }
+            val fieldColors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = YtText, unfocusedTextColor = YtText,
+                focusedBorderColor = YtAccent, unfocusedBorderColor = YtCard,
+                focusedContainerColor = YtCard, unfocusedContainerColor = YtCard,
+                focusedLabelColor = YtMuted, unfocusedLabelColor = YtMuted
+            )
+            rows.forEach { r ->
+                Column(
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(YtCard).padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RemoteImage(url = r.video.thumbUrl, modifier = Modifier.width(80.dp).height(45.dp).clip(RoundedCornerShape(8.dp)))
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = (if (r.kept) "Rahegi jaisi hai: " else "Purana: ") + r.video.title, color = YtMuted, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(text = "ID: ${r.video.id}", color = YtMuted, fontSize = 11.sp)
+                        }
+                    }
+                    if (!r.kept) {
+                        OutlinedTextField(
+                            value = r.newTitle, onValueChange = { r.newTitle = it },
+                            label = { Text("Naya title (${r.newTitle.length}/100)") },
+                            modifier = Modifier.fillMaxWidth(), minLines = 1, maxLines = 4, enabled = !busy, colors = fieldColors
+                        )
+                        if (changeDesc && r.newDesc.isNotBlank()) {
+                            Text(text = "Nayi description: " + r.newDesc.replace('\n', ' ').take(140) + "…", color = YtMuted, fontSize = 11.sp)
+                        }
+                        Text(
+                            text = if (r.apply) "☑ Ye badlein" else "☐ Ye chhor dein",
+                            color = YtText, fontSize = 13.sp,
+                            modifier = Modifier.clickable(enabled = !busy) { r.apply = !r.apply }.padding(vertical = 4.dp)
+                        )
+                    }
+                }
+            }
+            if (rows.any { !it.kept }) {
+                ActionButton(
+                    if (busy) "Ruko…" else "💾 Apply (${rows.count { it.apply && !it.kept }} videos YouTube par)",
+                    enabled = !busy, primary = true
+                ) { applyAll() }
+            }
+            Spacer(modifier = Modifier.height(24.dp))
+        }
     }
 }
 

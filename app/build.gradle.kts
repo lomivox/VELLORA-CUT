@@ -35,6 +35,12 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
+        // Cloudflare Pages backend (folder "backend" in this repo) that holds the AI / YouTube keys.
+        // Blank WORKER_URL = old behaviour (keys typed in Settings), no trailing slash.
+        buildConfigField("String", "WORKER_URL", "\"https://ytiq.pages.dev\"")
+        // Must be the SAME text as the APP_KEY secret on the Pages site (stops random strangers using it).
+        buildConfigField("String", "WORKER_APP_KEY", "\"d5e81a4a9d58d3347a66a31da8555d49468f6357b959fae2\"")
+
         ndk {
             // arm64-v8a only for now — every real device sold since ~2018 is
             // arm64, and dropping armeabi-v7a roughly halves the APK size

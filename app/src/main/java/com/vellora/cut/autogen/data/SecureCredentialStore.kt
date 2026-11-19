@@ -3,6 +3,7 @@ package com.vellora.cut.autogen.data
 import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import com.vellora.cut.BuildConfig
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -32,9 +33,14 @@ class SecureCredentialStore(context: Context) {
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
     )
 
+    /** True when the server (Cloudflare Pages backend) holds the keys, so nothing is typed in Settings. */
+    val usesWorker: Boolean get() = BuildConfig.WORKER_URL.isNotBlank()
+
     /** All saved accounts, in the order they should be tried. */
     var accounts: List<CloudflareAccount>
         get() {
+            // Server mode: one virtual account; the server itself rotates its real accounts when a quota runs out.
+            if (usesWorker) return listOf(CloudflareAccount(WORKER_ACCOUNT_ID, "server"))
             val raw = prefs.getString(KEY_ACCOUNTS_JSON, null) ?: return migrateLegacySingleAccount()
             return try {
                 val array = JSONArray(raw)
@@ -81,7 +87,7 @@ class SecureCredentialStore(context: Context) {
      * top-ranking videos). Without it, keyword research falls back to
      * YouTube's free autocomplete endpoint (still real, just less rich). */
     var youtubeApiKey: String
-        get() = prefs.getString(KEY_YOUTUBE_API_KEY, "") ?: ""
+        get() = if (usesWorker) WORKER_YT_KEY else prefs.getString(KEY_YOUTUBE_API_KEY, "") ?: ""
         set(value) = prefs.edit().putString(KEY_YOUTUBE_API_KEY, value).apply()
 
     /** Your channel's name — set once here, woven naturally into every
@@ -144,6 +150,9 @@ class SecureCredentialStore(context: Context) {
         private const val KEY_FIXED_TAGS = "channel_fixed_tags"
         private const val KEY_AUTO_UPLOAD = "youtube_auto_upload_enabled"
         private const val KEY_RENAME_TO_TITLE = "rename_video_to_title"
+        /** Stand-ins used in server mode (see [usesWorker]); the real keys never reach the phone. */
+        const val WORKER_ACCOUNT_ID = "__server__"
+        const val WORKER_YT_KEY = "__server__"
         const val DEFAULT_MODEL = "@cf/black-forest-labs/flux-1-schnell"
     }
 }

@@ -1,5 +1,7 @@
 package com.vellora.cut.autogen.network
 
+import com.vellora.cut.BuildConfig
+import com.vellora.cut.autogen.data.SecureCredentialStore
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -51,6 +53,17 @@ object YouTubeCompetitorResearch {
         }
     }
 
+    /** Direct YouTube call with the typed key, or through the Pages backend (which adds the real key itself). */
+    private fun ytRequest(path: String, query: String, apiKey: String): Request =
+        if (apiKey == SecureCredentialStore.WORKER_YT_KEY) {
+            Request.Builder()
+                .url("${BuildConfig.WORKER_URL.trimEnd('/')}/yt/$path?$query")
+                .addHeader("X-App-Key", BuildConfig.WORKER_APP_KEY)
+                .build()
+        } else {
+            Request.Builder().url("https://www.googleapis.com/youtube/v3/$path?$query&key=$apiKey").build()
+        }
+
     private fun searchTopVideos(
         seed: String,
         apiKey: String,
@@ -59,13 +72,11 @@ object YouTubeCompetitorResearch {
         relevanceLanguage: String?
     ): List<String> {
         val encoded = URLEncoder.encode(seed.take(100), "UTF-8")
-        val url = "https://www.googleapis.com/youtube/v3/search" +
-            "?part=snippet&type=video&order=relevance&maxResults=$maxVideos" +
+        val query = "part=snippet&type=video&order=relevance&maxResults=$maxVideos" +
             "&q=$encoded" +
             (if (!regionCode.isNullOrBlank()) "&regionCode=$regionCode" else "") +
-            (if (!relevanceLanguage.isNullOrBlank()) "&relevanceLanguage=$relevanceLanguage" else "") +
-            "&key=$apiKey"
-        val request = Request.Builder().url(url).build()
+            (if (!relevanceLanguage.isNullOrBlank()) "&relevanceLanguage=$relevanceLanguage" else "")
+        val request = ytRequest("search", query, apiKey)
 
         client.newCall(request).execute().use { response ->
             val body = response.body?.string() ?: return emptyList()
@@ -80,9 +91,7 @@ object YouTubeCompetitorResearch {
 
     private fun fetchTagsAndTitles(videoIds: List<String>, apiKey: String): Result {
         val idsParam = videoIds.joinToString(",")
-        val url = "https://www.googleapis.com/youtube/v3/videos" +
-            "?part=snippet&id=$idsParam&key=$apiKey"
-        val request = Request.Builder().url(url).build()
+        val request = ytRequest("videos", "part=snippet&id=$idsParam", apiKey)
 
         client.newCall(request).execute().use { response ->
             val body = response.body?.string() ?: return Result(emptyList(), emptyList())

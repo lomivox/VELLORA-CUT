@@ -53,6 +53,7 @@ private class GeminiKeyRowState(
 fun SettingsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val store = remember { SecureCredentialStore(context) }
+    val workerMode = store.usesWorker
 
     val rows = remember {
         val saved = store.accounts
@@ -94,10 +95,10 @@ fun SettingsScreen(onBack: () -> Unit) {
                 }
                 Spacer(modifier = Modifier.height(8.dp))
             }
-            Text(text = "Cloudflare AI Accounts", color = CyanPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text(text = if (workerMode) "AI Settings" else "Cloudflare AI Accounts", color = CyanPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "یہ credentials صرف اس فون پر، encrypted طور پر محفوظ ہوتی ہیں۔ " +
+                text = if (workerMode) "Cloudflare AI aur YouTube research ki keys server par hain — yahan kuch lagane ki zaroorat nahi." else "یہ credentials صرف اس فون پر، encrypted طور پر محفوظ ہوتی ہیں۔ " +
                     "ایک سے زیادہ accounts add کریں — روزانہ کوٹہ ختم ہونے پر اگلا account خود استعمال ہوگا۔",
                 color = TextSecondary,
                 fontSize = 12.sp
@@ -113,6 +114,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 UpdateCard()
                 Spacer(modifier = Modifier.height(24.dp))
 
+                if (!workerMode) {
                 rows.forEachIndexed { index, row ->
                     key(row.key) {
                         AccountCard(
@@ -157,6 +159,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                     }
                 }
 
+                }
                 Spacer(modifier = Modifier.height(28.dp))
                 Text(text = "Gemini API Keys (پہلے یہ استعمال ہوں گی)", color = CyanPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
@@ -221,6 +224,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                     }
                 }
 
+                if (!workerMode) {
                 Spacer(modifier = Modifier.height(28.dp))
                 Text(text = "YouTube Data API Key (اختیاری)", color = CyanPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
@@ -258,6 +262,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                     }
                 }
 
+                }
                 Spacer(modifier = Modifier.height(28.dp))
                 Text(text = "Channel Name", color = CyanPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))

@@ -1,6 +1,8 @@
 package com.vellora.cut.autogen.network
 
 import android.util.Base64
+import com.vellora.cut.BuildConfig
+import com.vellora.cut.autogen.data.SecureCredentialStore
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -17,6 +19,21 @@ class CloudflareApiException(
 ) : Exception(message)
 
 class CloudflareAiClient {
+
+    /** Direct Cloudflare call (keys typed in Settings), or the Pages backend when the app runs in server mode. */
+    private fun aiUrl(accountId: String, model: String): String =
+        if (accountId == SecureCredentialStore.WORKER_ACCOUNT_ID) {
+            "${BuildConfig.WORKER_URL.trimEnd('/')}/ai/run/$model"
+        } else {
+            "https://api.cloudflare.com/client/v4/accounts/$accountId/ai/run/$model"
+        }
+
+    private fun Request.Builder.withAuth(accountId: String, apiToken: String): Request.Builder =
+        if (accountId == SecureCredentialStore.WORKER_ACCOUNT_ID) {
+            addHeader("X-App-Key", BuildConfig.WORKER_APP_KEY)
+        } else {
+            addHeader("Authorization", "Bearer $apiToken")
+        }
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
@@ -37,7 +54,7 @@ class CloudflareAiClient {
         apiToken: String,
         model: String
     ): ByteArray {
-        val url = "https://api.cloudflare.com/client/v4/accounts/$accountId/ai/run/$model"
+        val url = aiUrl(accountId, model)
 
         val body = JSONObject().apply {
             put("prompt", prompt)
@@ -45,7 +62,7 @@ class CloudflareAiClient {
 
         val request = Request.Builder()
             .url(url)
-            .addHeader("Authorization", "Bearer $apiToken")
+            .withAuth(accountId, apiToken)
             .post(body)
             .build()
 
@@ -105,7 +122,7 @@ class CloudflareAiClient {
         apiToken: String
     ): String {
         val model = "@cf/meta/llama-3.1-8b-instruct"
-        val url = "https://api.cloudflare.com/client/v4/accounts/$accountId/ai/run/$model"
+        val url = aiUrl(accountId, model)
 
         val systemInstruction =
             "You convert one segment of a spoken video narration into a single " +
@@ -127,7 +144,7 @@ class CloudflareAiClient {
 
         val request = Request.Builder()
             .url(url)
-            .addHeader("Authorization", "Bearer $apiToken")
+            .withAuth(accountId, apiToken)
             .post(body)
             .build()
 
@@ -183,7 +200,7 @@ class CloudflareAiClient {
         apiToken: String
     ): String {
         val model = "@cf/meta/llama-3.1-8b-instruct"
-        val url = "https://api.cloudflare.com/client/v4/accounts/$accountId/ai/run/$model"
+        val url = aiUrl(accountId, model)
 
         val systemInstruction =
             "You classify the MOOD of a single video slide from its image description. " +
@@ -202,7 +219,7 @@ class CloudflareAiClient {
 
         val request = Request.Builder()
             .url(url)
-            .addHeader("Authorization", "Bearer $apiToken")
+            .withAuth(accountId, apiToken)
             .post(body)
             .build()
 
@@ -262,7 +279,7 @@ class CloudflareAiClient {
         language: String? = null
     ): List<com.vellora.cut.autogen.data.CaptionSegment> {
         val model = "@cf/openai/whisper-large-v3-turbo"
-        val url = "https://api.cloudflare.com/client/v4/accounts/$accountId/ai/run/$model"
+        val url = aiUrl(accountId, model)
 
         val base64Audio = Base64.encodeToString(audioBytes, Base64.NO_WRAP)
         val body = JSONObject().apply {
@@ -277,7 +294,7 @@ class CloudflareAiClient {
 
         val request = Request.Builder()
             .url(url)
-            .addHeader("Authorization", "Bearer $apiToken")
+            .withAuth(accountId, apiToken)
             .post(body)
             .build()
 
@@ -338,7 +355,7 @@ class CloudflareAiClient {
         // small/fast model used elsewhere here (generateImagePromptFromNarration,
         // classifyImageEnergy) since the prompt itself is already detailed/specific.
         val model = "@cf/meta/llama-3.1-8b-instruct"
-        val url = "https://api.cloudflare.com/client/v4/accounts/$accountId/ai/run/$model"
+        val url = aiUrl(accountId, model)
 
         val messages = org.json.JSONArray().put(
             JSONObject().apply {
@@ -362,7 +379,7 @@ class CloudflareAiClient {
 
         val request = Request.Builder()
             .url(url)
-            .addHeader("Authorization", "Bearer $apiToken")
+            .withAuth(accountId, apiToken)
             .post(body)
             .build()
 

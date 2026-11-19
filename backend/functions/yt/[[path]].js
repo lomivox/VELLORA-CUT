@@ -9,12 +9,13 @@ export async function onRequestGet({ request, env, params }) {
 
   const path = Array.isArray(params.path) ? params.path.join("/") : String(params.path || "");
   if (!ALLOWED_PATHS.has(path)) return json(400, "Ye YouTube path allowed nahi");
-  if (!env.YT_API_KEY) return json(500, "Server par YT_API_KEY secret set nahi hai");
+  const ytKey = String(env.YT_API_KEY || "").trim();
+  if (!ytKey) return json(500, "Server par YT_API_KEY secret set nahi hai");
 
   const incoming = new URL(request.url);
   const q = new URLSearchParams(incoming.search);
   q.delete("key");
-  q.set("key", env.YT_API_KEY);
+  q.set("key", ytKey);
 
   const res = await fetch(`https://www.googleapis.com/youtube/v3/${path}?${q.toString()}`);
   return new Response(await res.text(), {

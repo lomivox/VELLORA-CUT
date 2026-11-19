@@ -11,8 +11,8 @@ export function json(status, message, extra) {
 
 /** The app must send the shared secret (X-App-Key) that matches the APP_KEY secret on this site. */
 export function checkAppKey(request, env) {
-  const sent = request.headers.get("X-App-Key") || "";
-  const want = env.APP_KEY || "";
+  const sent = (request.headers.get("X-App-Key") || "").trim();
+  const want = String(env.APP_KEY || "").trim();
   if (!want) return json(500, "Server par APP_KEY secret set nahi hai");
   // constant-time-ish compare
   if (sent.length !== want.length) return json(401, "App key galat hai");
@@ -21,14 +21,41 @@ export function checkAppKey(request, env) {
   return diff === 0 ? null : json(401, "App key galat hai");
 }
 
-/** CF_ACCOUNTS secret: JSON like [{"id":"<account id>","token":"<api token>"}, ...] */
+/**
+ * Cloudflare accounts, read from simple variables (paste each value exactly as it is, no quotes needed):
+ *   CF_ID_1 + CF_TOKEN_1, CF_ID_2 + CF_TOKEN_2, ... up to 10 pairs.
+ * (The older single JSON secret CF_ACCOUNTS still works too.) Spaces around a value are removed automatically.
+ */
 export function readAccounts(env) {
+  const out = [];
+  const seen = new Set();
+  const add = (id, token) => {
+    id = String(id || "").trim();
+    token = String(token || "").trim();
+    if (id && token && !seen.has(id)) {
+      seen.add(id);
+      out.push({ id, token });
+    }
+  };
+  for (let i = 1; i <= 10; i++) add(env["CF_ID_" + i], env["CF_TOKEN_" + i]);
   try {
     const list = JSON.parse(env.CF_ACCOUNTS || "[]");
-    return Array.isArray(list) ? list.filter((a) => a && a.id && a.token) : [];
+    if (Array.isArray(list)) for (const a of list) if (a) add(a.id, a.token);
   } catch (e) {
-    return [];
+    /* ignore a broken JSON secret */
   }
+  return out;
+}
+
+/** How many CF_ID_n / CF_TOKEN_n are filled but have no partner (a typo in a variable name). */
+export function countIncomplete(env) {
+  let n = 0;
+  for (let i = 1; i <= 10; i++) {
+    const hasId = String(env["CF_ID_" + i] || "").trim() !== "";
+    const hasToken = String(env["CF_TOKEN_" + i] || "").trim() !== "";
+    if (hasId !== hasToken) n++;
+  }
+  return n;
 }
 
 export function shuffle(list) {

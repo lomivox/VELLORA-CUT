@@ -8,7 +8,8 @@ Holds the secret keys (Cloudflare AI accounts, YouTube API key) so the app needs
    Root directory (advanced) **backend**.
 3. After the first deploy: Settings -> Variables and Secrets -> add these as **Secret**:
    - `APP_KEY`  = same text as `WORKER_APP_KEY` in app/build.gradle.kts
-   - `CF_ACCOUNTS` = `[{"id":"ACCOUNT_ID_1","token":"API_TOKEN_1"},{"id":"ACCOUNT_ID_2","token":"API_TOKEN_2"}]`
+   - Cloudflare accounts, one pair per account (paste each value exactly as it is): `CF_ID_1` + `CF_TOKEN_1`,
+     `CF_ID_2` + `CF_TOKEN_2`, ... (up to 10 pairs)
    - `YT_API_KEY` = YouTube Data API key (optional)
 4. Redeploy (Deployments -> Retry), then open `https://<project>.pages.dev/ping` — it must show `"ok":true`.
 5. Put `https://<project>.pages.dev` into `WORKER_URL` in app/build.gradle.kts and build the app.

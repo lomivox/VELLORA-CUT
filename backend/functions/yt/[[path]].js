@@ -1,7 +1,7 @@
-// GET /yt/search?... and /yt/videos?...  — YouTube Data API, with the real API key added here (YT_API_KEY secret).
+// GET /yt/search?..., /yt/videos?... and /yt/channels?...  — YouTube Data API (read-only public data), with the real API key added here (YT_API_KEY secret).
 import { json, checkAppKey } from "../_shared.js";
 
-const ALLOWED_PATHS = new Set(["search", "videos"]);
+const ALLOWED_PATHS = new Set(["search", "videos", "channels"]);
 
 export async function onRequestGet({ request, env, params }) {
   const bad = checkAppKey(request, env);

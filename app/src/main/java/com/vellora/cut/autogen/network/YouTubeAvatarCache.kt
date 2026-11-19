@@ -36,8 +36,7 @@ object YouTubeAvatarCache {
         val byChannelId = missing.associateBy { it.substringAfter(ChannelAuth.KEY_SEPARATOR) }.filterKeys { it.isNotBlank() }
         if (byChannelId.isEmpty()) return false
         return try {
-            val url = "https://www.googleapis.com/youtube/v3/channels?part=snippet&id=${byChannelId.keys.joinToString(",")}&key=$apiKey"
-            client.newCall(Request.Builder().url(url).build()).execute().use { response ->
+            client.newCall(YouTubeApiRequest.build("channels", "part=snippet&id=${byChannelId.keys.joinToString(",")}", apiKey)).execute().use { response ->
                 if (!response.isSuccessful) return false
                 val items = JSONObject(response.body?.string().orEmpty()).optJSONArray("items") ?: return false
                 var added = false

@@ -3,6 +3,7 @@ package com.vellora.cut.autogen.ui
 import android.content.Context
 import com.vellora.cut.autogen.network.ChannelAuth
 import com.vellora.cut.autogen.network.NicheInsights
+import com.vellora.cut.autogen.network.YouTubeApiRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -151,8 +152,7 @@ object ChannelNiche {
         val channelId = accountKey.substringAfter(ChannelAuth.KEY_SEPARATOR, "")
         if (channelId.isBlank()) return null
         return try {
-            val url = "https://www.googleapis.com/youtube/v3/channels?part=snippet&id=$channelId&key=$apiKey"
-            http.newCall(Request.Builder().url(url).build()).execute().use { response ->
+            http.newCall(YouTubeApiRequest.build("channels", "part=snippet&id=$channelId", apiKey)).execute().use { response ->
                 if (!response.isSuccessful) return null
                 JSONObject(response.body?.string().orEmpty()).optJSONArray("items")?.optJSONObject(0)
                     ?.optJSONObject("snippet")?.optString("country")?.takeIf { it.length == 2 }

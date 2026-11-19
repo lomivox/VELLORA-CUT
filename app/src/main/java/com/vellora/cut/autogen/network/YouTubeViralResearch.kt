@@ -85,7 +85,7 @@ object YouTubeViralResearch {
             data class Raw(val id: String, val title: String, val channelId: String, val channelTitle: String, val views: Long)
             val raws = ArrayList<Raw>()
             ids.toList().take(50).chunked(50).forEach { chunk ->
-                val videoJson = get("https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${chunk.joinToString(",")}&key=$apiKey")
+                val videoJson = get("videos", "part=snippet,statistics&id=${chunk.joinToString(",")}", apiKey)
                 val vItems = videoJson.optJSONArray("items")
                 if (vItems != null) {
                     for (i in 0 until vItems.length()) {
@@ -144,9 +144,9 @@ object YouTubeViralResearch {
     fun similarChannels(query: String, apiKey: String, ownSubs: Long?, options: Options): Outcome {
         if (apiKey.isBlank()) return Outcome(null, "Settings mein YouTube API Key lagayen")
         return try {
-            val url = "https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&order=relevance&maxResults=25" +
-                "&q=${URLEncoder.encode(query.take(100), "UTF-8")}" + regionLang(options) + "&key=$apiKey"
-            val items = get(url).optJSONArray("items")
+            val q = "part=snippet&type=channel&order=relevance&maxResults=25" +
+                "&q=${URLEncoder.encode(query.take(100), "UTF-8")}" + regionLang(options)
+            val items = get("search", q, apiKey).optJSONArray("items")
             val ids = ArrayList<String>()
             if (items != null) {
                 for (i in 0 until items.length()) {
@@ -154,7 +154,7 @@ object YouTubeViralResearch {
                 }
             }
             if (ids.isEmpty()) return Outcome(null, "Is topic par koi channel nahi mila")
-            val chJson = get("https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${ids.distinct().take(50).joinToString(",")}&key=$apiKey")
+            val chJson = get("channels", "part=snippet,statistics&id=${ids.distinct().take(50).joinToString(",")}", apiKey)
             val list = ArrayList<BigChannel>()
             val cItems = chJson.optJSONArray("items")
             if (cItems != null) {
@@ -191,11 +191,10 @@ object YouTubeViralResearch {
     private fun searchVideoIds(topic: String, apiKey: String, o: Options, max: Int): List<String> {
         val fmt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
         val after = fmt.format(Date(System.currentTimeMillis() - o.days * 24L * 60 * 60 * 1000))
-        val url = "https://www.googleapis.com/youtube/v3/search" +
-            "?part=snippet&type=video&order=${o.order}&maxResults=$max" +
+        val q = "part=snippet&type=video&order=${o.order}&maxResults=$max" +
             "&publishedAfter=${URLEncoder.encode(after, "UTF-8")}" +
-            "&q=${URLEncoder.encode(topic, "UTF-8")}" + regionLang(o) + "&key=$apiKey"
-        val items = get(url).optJSONArray("items") ?: return emptyList()
+            "&q=${URLEncoder.encode(topic, "UTF-8")}" + regionLang(o)
+        val items = get("search", q, apiKey).optJSONArray("items") ?: return emptyList()
         return (0 until items.length()).mapNotNull { i ->
             items.optJSONObject(i)?.optJSONObject("id")?.optString("videoId")?.takeIf { it.isNotBlank() }
         }
@@ -205,7 +204,7 @@ object YouTubeViralResearch {
         val ids = channelIds.filter { it.isNotBlank() }.distinct().take(50)
         val out = HashMap<String, Long?>()
         if (ids.isEmpty()) return out
-        val items = get("https://www.googleapis.com/youtube/v3/channels?part=statistics&id=${ids.joinToString(",")}&key=$apiKey").optJSONArray("items")
+        val items = get("channels", "part=statistics&id=${ids.joinToString(",")}", apiKey).optJSONArray("items")
         if (items != null) {
             for (i in 0 until items.length()) {
                 val c = items.optJSONObject(i) ?: continue
@@ -235,10 +234,16 @@ object YouTubeViralResearch {
         return letters > 0 && foreign.toDouble() / letters >= 0.3
     }
 
-    private fun get(url: String): JSONObject {
-        client.newCall(Request.Builder().url(url).build()).execute().use { response ->
+    private fun get(path: String, query: String, apiKey: String): JSONObject {
+        client.newCall(YouTubeApiRequest.build(path, query, apiKey)).execute().use { response ->
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
+                // Server mode: the Pages backend only forwards the paths it lists — say so clearly.
+                val serverMsg = try { JSONObject(body).optJSONArray("errors")?.optJSONObject(0)?.optString("message").orEmpty() } catch (e: Exception) { "" }
+                if (serverMsg.contains("allowed", ignoreCase = true)) {
+                    throw ApiError("Server (backend) ne \"$path\" ki ijazat nahi di — backend ki yt file update karke push karein")
+                }
+                if (response.code == 401 && serverMsg.isNotBlank()) throw ApiError("Server ki app key galat hai (WORKER_APP_KEY)")
                 val err = try { JSONObject(body).optJSONObject("error") } catch (e: Exception) { null }
                 val reason = err?.optJSONArray("errors")?.optJSONObject(0)?.optString("reason").orEmpty()
                 throw ApiError(

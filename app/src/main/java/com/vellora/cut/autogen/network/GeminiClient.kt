@@ -60,7 +60,7 @@ class GeminiClient {
                 "generationConfig",
                 JSONObject()
                     .put("temperature", 0.7)
-                    .put("maxOutputTokens", 4096)
+                    .put("maxOutputTokens", 8192)
                     // No hidden "thinking" tokens eating the output budget.
                     .put("thinkingConfig", JSONObject().put("thinkingBudget", 0))
             )

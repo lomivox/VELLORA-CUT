@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vellora.cut.BuildConfig
 import com.vellora.cut.autogen.data.SecureCredentialStore
+import com.vellora.cut.autogen.network.ChannelAuth
 import com.vellora.cut.autogen.network.YouTubeAccounts
 import com.vellora.cut.autogen.network.YouTubeAvatarCache
 import com.vellora.cut.autogen.network.YtVideo
@@ -70,6 +71,7 @@ enum class YtiqScreen(val label: String, val icon: String) {
     Home("Home", "🏠"),
     Optimize("Optimize", "📈"),
     Research("Research", "🔍"),
+    Videos("My Videos", "🎬"),
     Thumbnails("Thumbnails", "🖼️"),
     Coach("AI Coach", "💬"),
     Daily("Daily Ideas", "💡"),
@@ -201,6 +203,7 @@ fun YtiqHomeScreen() {
                             go(YtiqScreen.Coach)
                         }
                         YtiqDrawerItem("🔍", "Research", screen == YtiqScreen.Research) { go(YtiqScreen.Research) }
+                        YtiqDrawerItem("🎬", "My Videos", screen == YtiqScreen.Videos) { go(YtiqScreen.Videos) }
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -365,6 +368,12 @@ fun YtiqHomeScreen() {
                         onAsk = { ask(it) },
                         onOpenCreate = { screen = YtiqScreen.Create },
                         onOpenVideo = { openVideo(it) }
+                    )
+                    YtiqScreen.Videos -> YtiqVideoManagerScreen(
+                        email = email,
+                        uploadsId = dash.channel?.uploadsPlaylistId
+                            ?: email?.substringAfter(ChannelAuth.KEY_SEPARATOR, "")?.takeIf { it.startsWith("UC") }?.let { "UU" + it.drop(2) },
+                        onPlay = { id, title -> playingVideo = YtVideo(id, title, null, "", 0L, 0L, 0L) }
                     )
                     YtiqScreen.Research -> YtiqResearchScreen(
                         competitorsMode = true,

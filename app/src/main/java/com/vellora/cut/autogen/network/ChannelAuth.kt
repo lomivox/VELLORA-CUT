@@ -40,7 +40,9 @@ object ChannelAuth {
     private const val AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
     private const val TOKEN_URL = "https://oauth2.googleapis.com/token"
     private const val API = "https://www.googleapis.com/youtube/v3"
+    // "youtube" (manage the account) is what lets the app edit and delete the channel's own videos.
     private const val SCOPES = "openid email profile " +
+        "https://www.googleapis.com/auth/youtube " +
         "https://www.googleapis.com/auth/youtube.upload " +
         "https://www.googleapis.com/auth/youtube.readonly"
 

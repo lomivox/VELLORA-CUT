@@ -22,7 +22,9 @@ data class ManagedVideo(
     val publishedAt: String,
     val views: Long,
     /** public, unlisted or private */
-    val privacy: String
+    val privacy: String,
+    /** length of the video in seconds (0 if unknown) */
+    val durationSec: Long = 0L
 )
 
 /**
@@ -84,7 +86,7 @@ object YouTubeVideoManager {
 
                 val byId = HashMap<String, ManagedVideo>()
                 ids.distinct().chunked(50).forEach { chunk ->
-                    val url = "$BASE/videos?part=snippet,statistics,status&id=${chunk.joinToString(",")}"
+                    val url = "$BASE/videos?part=snippet,statistics,status,contentDetails&id=${chunk.joinToString(",")}"
                     val r = call(Request.Builder().url(url).addHeader("Authorization", "Bearer $token").build())
                     if (r.code !in 200..299) return@withContext YtResult.Fail(errorMessage(r))
                     val items = JSONObject(r.body).optJSONArray("items") ?: return@forEach
@@ -105,7 +107,8 @@ object YouTubeVideoManager {
                             thumbUrl = thumb,
                             publishedAt = sn.optString("publishedAt"),
                             views = item.optJSONObject("statistics")?.optString("viewCount")?.toLongOrNull() ?: 0L,
-                            privacy = item.optJSONObject("status")?.optString("privacyStatus").orEmpty()
+                            privacy = item.optJSONObject("status")?.optString("privacyStatus").orEmpty(),
+                            durationSec = parseDuration(item.optJSONObject("contentDetails")?.optString("duration").orEmpty())
                         )
                     }
                 }
@@ -117,6 +120,15 @@ object YouTubeVideoManager {
                 YtResult.Fail(e.message ?: "Videos nahi mil sakin")
             }
         }
+
+    /** ISO 8601 length like PT1H2M3S → seconds. */
+    private fun parseDuration(iso: String): Long {
+        val m = Regex("PT(?:(\\d+)H)?(?:(\\d+)M)?(?:(\\d+)S)?").matchEntire(iso) ?: return 0L
+        val h = m.groupValues[1].toLongOrNull() ?: 0L
+        val min = m.groupValues[2].toLongOrNull() ?: 0L
+        val sec = m.groupValues[3].toLongOrNull() ?: 0L
+        return h * 3600 + min * 60 + sec
+    }
 
     /** Checks YouTube's own limits before anything is sent. Returns an error text or null when everything is fine. */
     fun validate(title: String, description: String, tags: List<String>): String? {

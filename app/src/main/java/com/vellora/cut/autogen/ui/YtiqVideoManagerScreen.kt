@@ -38,7 +38,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -61,6 +63,74 @@ private fun matches(v: ManagedVideo, query: String): Boolean {
     return words.all { hay.contains(it) }
 }
 
+private fun normText(s: String): String = s.lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
+
+private fun fmtDuration(sec: Long): String {
+    if (sec <= 0) return "—"
+    val h = sec / 3600
+    val m = (sec % 3600) / 60
+    val s = sec % 60
+    return if (h > 0) String.format(java.util.Locale.US, "%d:%02d:%02d", h, m, s) else String.format(java.util.Locale.US, "%d:%02d", m, s)
+}
+
+private data class DuplicateGroup(val reasons: List<String>, val videos: List<ManagedVideo>)
+
+/**
+ * Finds videos that look like repeats of each other: same title, nearly the same title, the same description,
+ * and — when the title also matches — the same length (a strong hint that one video was uploaded twice).
+ * YouTube gives no way to compare the pictures/sound of two videos, so the last check is always the person's own:
+ * play both and decide.
+ */
+private fun findDuplicates(videos: List<ManagedVideo>): List<DuplicateGroup> {
+    val n = videos.size
+    if (n < 2) return emptyList()
+    val titles = videos.map { normText(it.title) }
+    val descs = videos.map { normText(it.description) }
+    val tokenSets = titles.map { t -> t.split(' ').filter { it.isNotBlank() }.toSet() }
+    val parent = IntArray(n) { it }
+    fun find(x: Int): Int {
+        var r = x
+        while (parent[r] != r) {
+            parent[r] = parent[parent[r]]
+            r = parent[r]
+        }
+        return r
+    }
+    class PairInfo(val i: Int, val reasons: Set<String>)
+    val pairs = ArrayList<PairInfo>()
+    for (i in 0 until n) {
+        for (j in i + 1 until n) {
+            val sameTitle = titles[i].isNotBlank() && titles[i] == titles[j]
+            val sameDesc = descs[i].length >= 40 && descs[i] == descs[j]
+            var similar = false
+            if (!sameTitle && tokenSets[i].size >= 3 && tokenSets[j].size >= 3) {
+                val inter = tokenSets[i].count { it in tokenSets[j] }
+                val union = tokenSets[i].size + tokenSets[j].size - inter
+                similar = union > 0 && inter.toDouble() / union >= 0.8
+            }
+            if (!(sameTitle || sameDesc || similar)) continue
+            val sameLength = videos[i].durationSec > 0 && Math.abs(videos[i].durationSec - videos[j].durationSec) <= 2 && (sameTitle || similar)
+            val reasons = LinkedHashSet<String>()
+            if (sameTitle) reasons.add("Title bilkul ek jaisa")
+            if (similar) reasons.add("Title milta-julta")
+            if (sameDesc) reasons.add("Description ek jaisi")
+            if (sameLength) reasons.add("Length bhi ek jaisi (shayad ek hi video dobara upload hui)")
+            val ri = find(i)
+            val rj = find(j)
+            if (ri != rj) parent[ri] = rj
+            pairs.add(PairInfo(i, reasons))
+        }
+    }
+    val reasonsByRoot = HashMap<Int, LinkedHashSet<String>>()
+    pairs.forEach { reasonsByRoot.getOrPut(find(it.i)) { LinkedHashSet() }.addAll(it.reasons) }
+    val members = HashMap<Int, MutableList<ManagedVideo>>()
+    for (i in 0 until n) members.getOrPut(find(i)) { ArrayList() }.add(videos[i])
+    return members.entries
+        .filter { it.value.size >= 2 }
+        .map { e -> DuplicateGroup(reasonsByRoot[e.key]?.toList().orEmpty(), e.value.sortedBy { it.publishedAt }) }
+        .sortedByDescending { it.videos.size }
+}
+
 /**
  * "My Videos": every video of the channel in one list. Search shows all videos that match what was typed; tap a
  * video to change its title / description / tags (saved straight to YouTube) or to delete it.
@@ -79,6 +149,7 @@ fun YtiqVideoManagerScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var query by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf<ManagedVideo?>(null) }
+    var showDuplicates by remember { mutableStateOf(false) }
 
     /** A fresh login token for the selected channel, or null (the reason goes into [error]). */
     suspend fun token(): String? {
@@ -125,6 +196,7 @@ fun YtiqVideoManagerScreen(
     }
 
     val filtered = remember(videos, query) { videos.filter { matches(it, query) } }
+    val groups = remember(videos, showDuplicates) { if (showDuplicates) findDuplicates(videos) else emptyList() }
 
     PullToRefreshBox(
         isRefreshing = loading,
@@ -134,12 +206,19 @@ fun YtiqVideoManagerScreen(
         Column(
             modifier = Modifier.fillMaxSize().statusBarsPadding().padding(horizontal = 16.dp)
         ) {
-            OutlinedTextField(
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                ModeChip("Sab videos", !showDuplicates) { showDuplicates = false }
+                ModeChip("🔁 Duplicates", showDuplicates) { showDuplicates = true }
+            }
+            if (!showDuplicates) OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
                 placeholder = { Text("Apni videos mein dhoondein (title, description, tag)") },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = YtText, unfocusedTextColor = YtText,
                     focusedBorderColor = YtAccent, unfocusedBorderColor = YtCard,
@@ -147,7 +226,13 @@ fun YtiqVideoManagerScreen(
                 )
             )
             Text(
-                text = if (query.isBlank()) "${videos.size} videos" else "${filtered.size} / ${videos.size} videos mile",
+                text = when {
+                    showDuplicates && groups.isEmpty() -> "Koi duplicate nahi mila ✅ (${videos.size} videos check hui)"
+                    showDuplicates -> "${groups.size} group mile • ${groups.sumOf { it.videos.size }} videos ek jaisi lag rahi hain. " +
+                        "Pehle dono chala kar dekh lein, phir jo faltu ho use delete karein."
+                    query.isBlank() -> "${videos.size} videos"
+                    else -> "${filtered.size} / ${videos.size} videos mile"
+                },
                 color = YtMuted, fontSize = 12.sp,
                 modifier = Modifier.padding(vertical = 6.dp)
             )
@@ -158,8 +243,29 @@ fun YtiqVideoManagerScreen(
                 Text(text = "Abhi koi video nahi.", color = YtMuted, fontSize = 13.sp)
             }
             LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(filtered, key = { it.id }) { v ->
-                    ManagedVideoRow(v) { editing = v }
+                if (showDuplicates) {
+                    groups.forEachIndexed { gi, g ->
+                        item(key = "header$gi") {
+                            Text(
+                                text = "Group ${gi + 1} • ${g.videos.size} videos\n" + g.reasons.joinToString(" • "),
+                                color = YtText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
+                        }
+                        val mostViews = g.videos.maxByOrNull { it.views }
+                        val oldest = g.videos.minByOrNull { it.publishedAt }
+                        items(g.videos, key = { "g$gi-${it.id}" }) { v ->
+                            val badge = listOfNotNull(
+                                if (v === mostViews) "⭐ sab se zyada views" else null,
+                                if (v === oldest) "🕒 sab se purani" else null
+                            ).joinToString(" • ")
+                            ManagedVideoRow(v, badge.ifBlank { null }) { editing = v }
+                        }
+                    }
+                } else {
+                    items(filtered, key = { it.id }) { v ->
+                        ManagedVideoRow(v, null) { editing = v }
+                    }
                 }
                 item { Spacer(modifier = Modifier.height(24.dp)) }
             }
@@ -185,7 +291,18 @@ fun YtiqVideoManagerScreen(
 }
 
 @Composable
-private fun ManagedVideoRow(v: ManagedVideo, onClick: () -> Unit) {
+private fun ModeChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(20.dp),
+        color = if (selected) YtAccent else YtCard
+    ) {
+        Text(text = label, color = YtText, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+    }
+}
+
+@Composable
+private fun ManagedVideoRow(v: ManagedVideo, badge: String?, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -209,9 +326,11 @@ private fun ManagedVideoRow(v: ManagedVideo, onClick: () -> Unit) {
                 else -> v.privacy
             }
             Text(
-                text = "${formatCount(v.views)} views • $privacy • ${v.publishedAt.take(10)}",
+                text = "${formatCount(v.views)} views • $privacy • ${v.publishedAt.take(10)} • ${fmtDuration(v.durationSec)}",
                 color = YtMuted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp)
             )
+            Text(text = "ID: ${v.id}", color = YtMuted, fontSize = 11.sp)
+            if (badge != null) Text(text = badge, color = YtText, fontSize = 11.sp)
         }
     }
 }
@@ -314,6 +433,15 @@ private fun EditVideoDialog(
                     modifier = Modifier.clickable(enabled = !busy) { onDismiss() }.padding(8.dp)
                 )
             }
+            val clipboard = LocalClipboardManager.current
+            Text(
+                text = "ID: ${video.id}  •  ${fmtDuration(video.durationSec)}  •  tap = ID copy",
+                color = YtMuted, fontSize = 12.sp,
+                modifier = Modifier.clickable {
+                    clipboard.setText(AnnotatedString(video.id))
+                    message = "ID copy ho gayi: ${video.id}"
+                }
+            )
             val fieldColors = OutlinedTextFieldDefaults.colors(
                 focusedTextColor = YtText, unfocusedTextColor = YtText,
                 focusedBorderColor = YtAccent, unfocusedBorderColor = YtCard,

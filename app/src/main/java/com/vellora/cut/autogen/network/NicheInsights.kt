@@ -63,9 +63,9 @@ object NicheInsights {
     fun coachBlock(c: Context): String {
         val s = load(c) ?: return ""
         if (s.titles.isEmpty() && s.channels.isEmpty()) return ""
-        val sb = StringBuilder("\nIs channel ke topic (${s.niche}) par abhi competitors ka haal:\n")
+        val sb = StringBuilder("\nCompetitors right now on this channel's topic (${s.niche}):\n")
         if (s.titles.isNotEmpty()) {
-            sb.append("Viral videos ke title:\n")
+            sb.append("Viral video titles:\n")
             s.titles.take(6).forEach { sb.append("- ").append(it).append("\n") }
         }
         if (s.channels.isNotEmpty()) sb.append("Bade channels: ").append(s.channels.take(6).joinToString(", ")).append("\n")

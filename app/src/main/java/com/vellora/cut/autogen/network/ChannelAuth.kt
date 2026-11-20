@@ -140,7 +140,7 @@ object ChannelAuth {
             val err = redirect.getQueryParameter("error")
             if (err != null) {
                 return@withContext ConnectResult.Fail(
-                    if (err == "access_denied") "Aap ne login cancel kar diya" else "Google ne mana kar diya: $err"
+                    if (err == "access_denied") "You cancelled the login" else "Google refused: $err"
                 )
             }
             val state = redirect.getQueryParameter("state")
@@ -149,7 +149,7 @@ object ChannelAuth {
             val savedState = p.getString(K_STATE, null)
             val clientId = clientId(context)
             if (code == null || verifier == null || clientId == null || state == null || state != savedState) {
-                return@withContext ConnectResult.Fail("Login ka jawab sahi nahi tha — dobara koshish karein")
+                return@withContext ConnectResult.Fail("The login response was not valid — try again")
             }
             p.edit().remove(K_VERIFIER).remove(K_STATE).apply()
 
@@ -163,14 +163,14 @@ object ChannelAuth {
             val tokens = http.newCall(Request.Builder().url(TOKEN_URL).post(form).build()).execute().use { r ->
                 val body = r.body?.string().orEmpty()
                 if (!r.isSuccessful) {
-                    return@withContext ConnectResult.Fail("Token nahi mila (${r.code}): ${errorText(body)}")
+                    return@withContext ConnectResult.Fail("Could not get a token (${r.code}): ${errorText(body)}")
                 }
                 JSONObject(body)
             }
             val access = tokens.optString("access_token")
             val refresh = tokens.optString("refresh_token")
             if (access.isBlank() || refresh.isBlank()) {
-                return@withContext ConnectResult.Fail("Google ne lamba login token nahi diya — dobara koshish karein")
+                return@withContext ConnectResult.Fail("Google did not return a long-lived login token — try again")
             }
             val expiresMs = System.currentTimeMillis() + tokens.optLong("expires_in", 3600L) * 1000L
 
@@ -182,7 +182,7 @@ object ChannelAuth {
             } catch (e: Exception) {
                 ""
             }
-            if (email.isBlank()) return@withContext ConnectResult.Fail("Gmail ka pata nahi chala")
+            if (email.isBlank()) return@withContext ConnectResult.Fail("Could not determine the Gmail address")
 
             // Which channel did the person pick? The token belongs to exactly that one.
             val channelReq = Request.Builder()
@@ -192,15 +192,15 @@ object ChannelAuth {
             val channelJson = http.newCall(channelReq).execute().use { r ->
                 val body = r.body?.string().orEmpty()
                 if (!r.isSuccessful) {
-                    return@withContext ConnectResult.Fail("YouTube error ${r.code}: ${errorText(body)}")
+                    return@withContext ConnectResult.Fail(YouTubeErrors.describe(r.code, body))
                 }
                 JSONObject(body)
             }
             val item = channelJson.optJSONArray("items")?.optJSONObject(0)
-                ?: return@withContext ConnectResult.Fail("Is login par koi YouTube channel nahi mila")
+                ?: return@withContext ConnectResult.Fail("No YouTube channel found for this login")
             val channelId = item.optString("id")
             val title = item.optJSONObject("snippet")?.optString("title").orEmpty()
-            if (channelId.isBlank()) return@withContext ConnectResult.Fail("Channel ki ID nahi mili")
+            if (channelId.isBlank()) return@withContext ConnectResult.Fail("Channel ID not found")
 
             val key = "$email$KEY_SEPARATOR$channelId"
             p.edit().putString("rt_$key", refresh).apply()
@@ -209,7 +209,7 @@ object ChannelAuth {
             YouTubeAccounts.setChannelTitle(context, key, title)
             ConnectResult.Ok(title.ifBlank { email })
         } catch (e: Exception) {
-            ConnectResult.Fail(e.message ?: "Login poora nahi ho saka")
+            ConnectResult.Fail(e.message ?: "Login could not be completed")
         }
     }
 
@@ -222,9 +222,9 @@ object ChannelAuth {
                     if (exp - 60_000L > System.currentTimeMillis()) return@withContext YouTubeAuthManager.TokenResult.Success(t)
                 }
                 val clientId = clientId(context)
-                    ?: return@withContext YouTubeAuthManager.TokenResult.Error("Google Client ID nahi mila — Settings mein likhein")
+                    ?: return@withContext YouTubeAuthManager.TokenResult.Error("Google Client ID is missing")
                 val refresh = secure(context).getString("rt_$key", null)
-                    ?: return@withContext YouTubeAuthManager.TokenResult.Error("Is channel ka login nahi mila — Remove kar ke dobara jodein")
+                    ?: return@withContext YouTubeAuthManager.TokenResult.Error("No login found for this channel — remove it and connect again")
                 val form = FormBody.Builder()
                     .add("client_id", clientId)
                     .add("refresh_token", refresh)
@@ -234,9 +234,9 @@ object ChannelAuth {
                     val body = r.body?.string().orEmpty()
                     if (!r.isSuccessful) {
                         val msg = if (body.contains("invalid_grant")) {
-                            "Is channel ki ijazat khatam ho gayi — Remove kar ke dobara jodein"
+                            "This channel's permission has expired — remove it and connect again"
                         } else {
-                            "Token nahi mila (${r.code}): ${errorText(body)}"
+                            "Could not get a token (${r.code}): ${errorText(body)}"
                         }
                         return@withContext YouTubeAuthManager.TokenResult.Error(msg)
                     }
@@ -247,9 +247,9 @@ object ChannelAuth {
                     YouTubeAuthManager.TokenResult.Success(access)
                 }
             } catch (e: java.io.IOException) {
-                YouTubeAuthManager.TokenResult.Error("Internet nahi mila")
+                YouTubeAuthManager.TokenResult.Error("No internet connection")
             } catch (e: Exception) {
-                YouTubeAuthManager.TokenResult.Error(e.message ?: "Token nahi mil saka")
+                YouTubeAuthManager.TokenResult.Error(e.message ?: "Could not get a token")
             }
         }
 

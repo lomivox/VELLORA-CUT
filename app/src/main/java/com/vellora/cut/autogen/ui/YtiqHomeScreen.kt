@@ -242,7 +242,7 @@ fun YtiqHomeScreen() {
                         Column(modifier = Modifier.weight(1f)) {
                             // The Gmail YTIQ is connected with — shown only here, nowhere else in the app.
                             Text(
-                                text = connectedGmail ?: "YouTube jodein",
+                                text = connectedGmail ?: "Connect YouTube",
                                 color = YtText, fontSize = 14.sp, fontWeight = FontWeight.Medium,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis
                             )
@@ -338,7 +338,7 @@ fun YtiqHomeScreen() {
                             )
                         }
                         DropdownMenuItem(
-                            text = { Text(text = "+ Channel jodein", color = YtText, fontSize = 15.sp) },
+                            text = { Text(text = "+ Add channel", color = YtText, fontSize = 15.sp) },
                             onClick = { channelMenuOpen = false; go(YtiqScreen.Settings) }
                         )
                     }
@@ -397,13 +397,13 @@ fun YtiqHomeScreen() {
                     YtiqScreen.Coach -> YtiqCoachScreen(coach = coach, onSend = { send(it) })
                     YtiqScreen.Subscribers -> YtiqSubscribersScreen(dash = dash, onAsk = { ask(it) })
                     YtiqScreen.Daily -> YtiqAiToolScreen(
-                        dash, "Aap ke channel ke asal data se roz naye ideas.", YtiqDailyActions
+                        dash, "Fresh ideas every day from your channel's real data.", YtiqDailyActions
                     )
                     YtiqScreen.Learn -> YtiqAiToolScreen(
-                        dash, "Seekhein: har jawab aap ke apne channel ke hisab se.", YtiqLearnActions
+                        dash, "Learn: every answer is based on your own channel.", YtiqLearnActions
                     )
                     YtiqScreen.Generate -> YtiqAiToolScreen(
-                        dash, "Ek tap par ideas, script, tags aur description.", YtiqGenerateActions
+                        dash, "Ideas, script, tags and description in one tap.", YtiqGenerateActions
                     )
                     YtiqScreen.Create -> Box(modifier = Modifier.fillMaxSize()) {
                         ShortsMetadataScreen(onBack = { screen = YtiqScreen.Home })

@@ -3,7 +3,6 @@ package com.vellora.cut.autogen.ui
 import android.content.Context
 import com.vellora.cut.autogen.network.ChannelAuth
 import com.vellora.cut.autogen.network.NicheInsights
-import com.vellora.cut.autogen.network.YouTubeApiRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -94,16 +93,16 @@ object ChannelNiche {
         val titles = ownTitles.map { it.trim() }.filter { it.isNotBlank() }.take(15)
         if (titles.isNotEmpty()) {
             val prompt = buildString {
-                append("Neeche ek YouTube channel ki haal ki videos ke title hain. In se channel ka asal topic (niche) samjho ")
-                append("aur competitors dhoondne ke liye YouTube search phrases do.\n")
+                append("Below are the titles of a YouTube channel's recent videos. From them, work out the channel's real topic (niche) ")
+                append("and give YouTube search phrases to find competitors.\n")
                 if (!channelTitle.isNullOrBlank()) append("Channel: $channelTitle\n")
                 append("Titles:\n")
                 titles.forEach { append("- ").append(it).append("\n") }
-                append("\nSirf JSON do, koi aur lafz nahi:\n")
-                append("{\"niche\":\"<ek jumla, Roman Urdu mein>\",\"queries\":[\"<phrase1>\",\"<phrase2>\",\"<phrase3>\"],\"keywords\":[\"<6 se 8 asal lafz>\"]}\n")
-                append("Qaide: queries wohi hon jo is channel ka audience YouTube mein type karta hai (2 se 5 lafz), ")
-                append("usi zaban/script mein jis mein channel ke titles hain; har query ka alag pehlu ho; sirf ek lafz wali generic query ")
-                append("(jaise \"motivation\") mat do; kisi channel ya shakhs ka naam mat do.")
+                append("\nReturn JSON only, no other words:\n")
+                append("{\"niche\":\"<one sentence, in English>\",\"queries\":[\"<phrase1>\",\"<phrase2>\",\"<phrase3>\"],\"keywords\":[\"<6 to 8 real words>\"]}\n")
+                append("Rules: queries must be what this channel's audience types into YouTube (2 to 5 words), ")
+                append("in the same language/script as the channel's titles; each query must cover a different angle; do not give a generic single-word query ")
+                append("(like \"motivation\"); do not name any channel or person.")
             }
             val ai = YtiqAi.text(context, prompt)
             if (ai is YtiqAiResult.Ok) {
@@ -152,7 +151,8 @@ object ChannelNiche {
         val channelId = accountKey.substringAfter(ChannelAuth.KEY_SEPARATOR, "")
         if (channelId.isBlank()) return null
         return try {
-            http.newCall(YouTubeApiRequest.build("channels", "part=snippet&id=$channelId", apiKey)).execute().use { response ->
+            val url = "https://www.googleapis.com/youtube/v3/channels?part=snippet&id=$channelId&key=$apiKey"
+            http.newCall(Request.Builder().url(url).build()).execute().use { response ->
                 if (!response.isSuccessful) return null
                 JSONObject(response.body?.string().orEmpty()).optJSONArray("items")?.optJSONObject(0)
                     ?.optJSONObject("snippet")?.optString("country")?.takeIf { it.length == 2 }

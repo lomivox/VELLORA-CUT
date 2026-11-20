@@ -29,7 +29,7 @@ object WhisperChunkedTranscriber {
         onChunkProgress: (done: Int, total: Int) -> Unit = { _, _ -> }
     ): Result<List<CaptionSegment>> = withContext(Dispatchers.IO) {
         if (accounts.isEmpty()) {
-            return@withContext Result.failure(Exception("Koi Cloudflare account save nahi hai"))
+            return@withContext Result.failure(Exception("No Cloudflare account saved"))
         }
 
         val chunks = try {
@@ -47,7 +47,7 @@ object WhisperChunkedTranscriber {
             val chunkBytes = try {
                 chunk.readBytes()
             } catch (e: Exception) {
-                lastError = "Chunk ${index + 1} parhi nahi ja saki: ${e.message}"
+                lastError = "Could not read chunk ${index + 1}: ${e.message}"
                 return@forEachIndexed
             }
 
@@ -79,7 +79,7 @@ object WhisperChunkedTranscriber {
         }
 
         if (allSegments.isEmpty()) {
-            Result.failure(Exception(lastError ?: "Transcription fail hui"))
+            Result.failure(Exception(lastError ?: "Transcription failed"))
         } else {
             Result.success(allSegments)
         }

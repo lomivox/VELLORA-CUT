@@ -40,18 +40,18 @@ fun UploadProgressCard(entityId: Long, onCancel: () -> Unit) {
         when {
             info == null || info.state.isFinished && info.state != WorkInfo.State.SUCCEEDED -> {
                 // An "uploading" entry with no upload behind it (old build, or it was stopped): let the person reset it.
-                Text(text = "Upload ka koi chalta hua kaam nahi mila.", color = TextSecondary, fontSize = 12.sp)
+                Text(text = "No running upload found.", color = TextSecondary, fontSize = 12.sp)
                 Spacer(modifier = Modifier.height(8.dp))
-                OutlinedButton(onClick = onCancel) { Text(text = "Reset karein", color = TextPrimary) }
+                OutlinedButton(onClick = onCancel) { Text(text = "Reset", color = TextPrimary) }
             }
             info?.state == WorkInfo.State.ENQUEUED || info?.state == WorkInfo.State.BLOCKED -> {
-                Text(text = "⏳ Internet / system ka intezar hai — milte hi upload shuru ho jayegi", color = TextSecondary, fontSize = 12.sp)
+                Text(text = "⏳ Waiting for internet / the system — the upload starts as soon as it is available", color = TextSecondary, fontSize = 12.sp)
                 Spacer(modifier = Modifier.height(8.dp))
-                OutlinedButton(onClick = onCancel) { Text(text = "✖ Upload cancel karein", color = Color(0xFFFF6B6B)) }
+                OutlinedButton(onClick = onCancel) { Text(text = "✖ Cancel upload", color = Color(0xFFFF6B6B)) }
             }
             else -> {
                 Text(
-                    text = if (total > 0 && sent > 0) "⬆️ Upload ho rahi hai — $percent%" else "⬆️ Upload shuru ho rahi hai…",
+                    text = if (total > 0 && sent > 0) "⬆️ Uploading — $percent%" else "⬆️ Upload is starting…",
                     color = CyanPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.height(8.dp))
@@ -63,18 +63,18 @@ fun UploadProgressCard(entityId: Long, onCancel: () -> Unit) {
                 if (total > 0) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(text = "${UploadFormat.bytes(sent)} / ${UploadFormat.bytes(total)}", color = TextPrimary, fontSize = 13.sp)
-                    Text(text = "Baaqi: ${UploadFormat.bytes((total - sent).coerceAtLeast(0L))}", color = TextSecondary, fontSize = 12.sp)
+                    Text(text = "Remaining: ${UploadFormat.bytes((total - sent).coerceAtLeast(0L))}", color = TextSecondary, fontSize = 12.sp)
                     if (speed > 0) {
                         Text(
-                            text = "Raftar: ${UploadFormat.bytes(speed)}/s  •  Andaza: ${UploadFormat.duration(eta)} baaqi",
+                            text = "Speed: ${UploadFormat.bytes(speed)}/s  •  ETA: ${UploadFormat.duration(eta)} left",
                             color = TextSecondary, fontSize = 12.sp
                         )
                     }
                 }
                 Spacer(modifier = Modifier.height(6.dp))
-                Text(text = "App band karne par bhi upload chalti rahegi.", color = TextSecondary, fontSize = 11.sp)
+                Text(text = "The upload keeps running even if you close the app.", color = TextSecondary, fontSize = 11.sp)
                 Spacer(modifier = Modifier.height(8.dp))
-                OutlinedButton(onClick = onCancel) { Text(text = "✖ Upload cancel karein", color = Color(0xFFFF6B6B)) }
+                OutlinedButton(onClick = onCancel) { Text(text = "✖ Cancel upload", color = Color(0xFFFF6B6B)) }
             }
         }
     }

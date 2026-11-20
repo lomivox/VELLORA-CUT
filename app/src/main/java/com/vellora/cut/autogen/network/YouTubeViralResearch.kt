@@ -73,19 +73,19 @@ object YouTubeViralResearch {
         keywords: List<String>,
         maxTotal: Int = 45
     ): Outcome {
-        if (apiKey.isBlank()) return Outcome(null, "Settings mein YouTube API Key lagayen")
+        if (apiKey.isBlank()) return Outcome(null, "YouTube API key is missing")
         val qs = queries.map { it.trim() }.filter { it.isNotBlank() }.distinct().take(3)
-        if (qs.isEmpty()) return Outcome(null, "Topic likhein")
+        if (qs.isEmpty()) return Outcome(null, "Enter a topic")
         return try {
             val perQuery = maxOf(10, maxTotal / qs.size)
             val ids = LinkedHashSet<String>()
             qs.forEach { q -> ids.addAll(searchVideoIds(q.take(100), apiKey, options, perQuery)) }
-            if (ids.isEmpty()) return Outcome(null, "Is topic par ${options.days} din ki koi video nahi mili")
+            if (ids.isEmpty()) return Outcome(null, "No videos found in the last ${options.days} days on this topic")
 
             data class Raw(val id: String, val title: String, val channelId: String, val channelTitle: String, val views: Long)
             val raws = ArrayList<Raw>()
             ids.toList().take(50).chunked(50).forEach { chunk ->
-                val videoJson = get("videos", "part=snippet,statistics&id=${chunk.joinToString(",")}", apiKey)
+                val videoJson = get("https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${chunk.joinToString(",")}&key=$apiKey")
                 val vItems = videoJson.optJSONArray("items")
                 if (vItems != null) {
                     for (i in 0 until vItems.length()) {
@@ -103,14 +103,14 @@ object YouTubeViralResearch {
                     }
                 }
             }
-            if (raws.isEmpty()) return Outcome(null, "Videos ka data nahi mila")
+            if (raws.isEmpty()) return Outcome(null, "Video data not found")
 
             // Drop foreign-script titles, then drop videos that share nothing with the channel's own topic words.
             val notForeign = raws.filter { !isForeignScript(it.title) }
             val topicWords = tokens((qs + keywords).joinToString(" "))
             val relevant = notForeign.filter { r -> tokens(r.title).any { it in topicWords } }
             val kept = if (relevant.size >= 5) relevant else notForeign
-            if (kept.isEmpty()) return Outcome(null, "Is topic par apne channel jaisi koi video nahi mili")
+            if (kept.isEmpty()) return Outcome(null, "No videos like your channel's found on this topic")
 
             val subs = channelSubscribers(kept.map { it.channelId }, apiKey)
             val videos = kept.map { r ->
@@ -133,7 +133,7 @@ object YouTubeViralResearch {
         } catch (e: ApiError) {
             Outcome(null, e.message)
         } catch (e: Exception) {
-            Outcome(null, "Internet ya YouTube se rabta nahi hua")
+            Outcome(null, "Could not reach the internet or YouTube")
         }
     }
 
@@ -142,19 +142,19 @@ object YouTubeViralResearch {
      * world (no foreign scripts), those close to the own size first (about 0.3x to 30x), then the bigger ones.
      */
     fun similarChannels(query: String, apiKey: String, ownSubs: Long?, options: Options): Outcome {
-        if (apiKey.isBlank()) return Outcome(null, "Settings mein YouTube API Key lagayen")
+        if (apiKey.isBlank()) return Outcome(null, "YouTube API key is missing")
         return try {
-            val q = "part=snippet&type=channel&order=relevance&maxResults=25" +
-                "&q=${URLEncoder.encode(query.take(100), "UTF-8")}" + regionLang(options)
-            val items = get("search", q, apiKey).optJSONArray("items")
+            val url = "https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&order=relevance&maxResults=25" +
+                "&q=${URLEncoder.encode(query.take(100), "UTF-8")}" + regionLang(options) + "&key=$apiKey"
+            val items = get(url).optJSONArray("items")
             val ids = ArrayList<String>()
             if (items != null) {
                 for (i in 0 until items.length()) {
                     items.optJSONObject(i)?.optJSONObject("id")?.optString("channelId")?.takeIf { it.isNotBlank() }?.let { ids.add(it) }
                 }
             }
-            if (ids.isEmpty()) return Outcome(null, "Is topic par koi channel nahi mila")
-            val chJson = get("channels", "part=snippet,statistics&id=${ids.distinct().take(50).joinToString(",")}", apiKey)
+            if (ids.isEmpty()) return Outcome(null, "No channels found on this topic")
+            val chJson = get("https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${ids.distinct().take(50).joinToString(",")}&key=$apiKey")
             val list = ArrayList<BigChannel>()
             val cItems = chJson.optJSONArray("items")
             if (cItems != null) {
@@ -178,7 +178,7 @@ object YouTubeViralResearch {
         } catch (e: ApiError) {
             Outcome(null, e.message)
         } catch (e: Exception) {
-            Outcome(null, "Internet ya YouTube se rabta nahi hua")
+            Outcome(null, "Could not reach the internet or YouTube")
         }
     }
 
@@ -191,10 +191,11 @@ object YouTubeViralResearch {
     private fun searchVideoIds(topic: String, apiKey: String, o: Options, max: Int): List<String> {
         val fmt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
         val after = fmt.format(Date(System.currentTimeMillis() - o.days * 24L * 60 * 60 * 1000))
-        val q = "part=snippet&type=video&order=${o.order}&maxResults=$max" +
+        val url = "https://www.googleapis.com/youtube/v3/search" +
+            "?part=snippet&type=video&order=${o.order}&maxResults=$max" +
             "&publishedAfter=${URLEncoder.encode(after, "UTF-8")}" +
-            "&q=${URLEncoder.encode(topic, "UTF-8")}" + regionLang(o)
-        val items = get("search", q, apiKey).optJSONArray("items") ?: return emptyList()
+            "&q=${URLEncoder.encode(topic, "UTF-8")}" + regionLang(o) + "&key=$apiKey"
+        val items = get(url).optJSONArray("items") ?: return emptyList()
         return (0 until items.length()).mapNotNull { i ->
             items.optJSONObject(i)?.optJSONObject("id")?.optString("videoId")?.takeIf { it.isNotBlank() }
         }
@@ -204,7 +205,7 @@ object YouTubeViralResearch {
         val ids = channelIds.filter { it.isNotBlank() }.distinct().take(50)
         val out = HashMap<String, Long?>()
         if (ids.isEmpty()) return out
-        val items = get("channels", "part=statistics&id=${ids.joinToString(",")}", apiKey).optJSONArray("items")
+        val items = get("https://www.googleapis.com/youtube/v3/channels?part=statistics&id=${ids.joinToString(",")}&key=$apiKey").optJSONArray("items")
         if (items != null) {
             for (i in 0 until items.length()) {
                 val c = items.optJSONObject(i) ?: continue
@@ -234,25 +235,11 @@ object YouTubeViralResearch {
         return letters > 0 && foreign.toDouble() / letters >= 0.3
     }
 
-    private fun get(path: String, query: String, apiKey: String): JSONObject {
-        client.newCall(YouTubeApiRequest.build(path, query, apiKey)).execute().use { response ->
+    private fun get(url: String): JSONObject {
+        client.newCall(Request.Builder().url(url).build()).execute().use { response ->
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
-                // Server mode: the Pages backend only forwards the paths it lists — say so clearly.
-                val serverMsg = try { JSONObject(body).optJSONArray("errors")?.optJSONObject(0)?.optString("message").orEmpty() } catch (e: Exception) { "" }
-                if (serverMsg.contains("allowed", ignoreCase = true)) {
-                    throw ApiError("Server (backend) ne \"$path\" ki ijazat nahi di — backend ki yt file update karke push karein")
-                }
-                if (response.code == 401 && serverMsg.isNotBlank()) throw ApiError("Server ki app key galat hai (WORKER_APP_KEY)")
-                val err = try { JSONObject(body).optJSONObject("error") } catch (e: Exception) { null }
-                val reason = err?.optJSONArray("errors")?.optJSONObject(0)?.optString("reason").orEmpty()
-                throw ApiError(
-                    when {
-                        reason.contains("quota", ignoreCase = true) -> "YouTube API ka aaj ka quota khatam ho gaya — kal dobara try karein"
-                        response.code == 400 || response.code == 403 -> "YouTube API key galat ya band hai (Settings check karein)"
-                        else -> "YouTube se jawab nahi aaya (${response.code})"
-                    }
-                )
+                throw ApiError(YouTubeErrors.describe(response.code, body))
             }
             return JSONObject(body)
         }

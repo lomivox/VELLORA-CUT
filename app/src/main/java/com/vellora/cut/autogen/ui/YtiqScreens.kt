@@ -165,7 +165,7 @@ private fun ChannelBar(
                     )
                 }
                 DropdownMenuItem(
-                    text = { Text(text = "+ Dusra Gmail / Channel jodein") },
+                    text = { Text(text = "+ Add another Gmail / channel") },
                     onClick = { open = false; onAdd() }
                 )
             }
@@ -189,8 +189,8 @@ private fun UpdateBanner(version: String, onClick: () -> Unit) {
         ) {
             Text(text = "⬆️", fontSize = 22.sp)
             Column(modifier = Modifier.weight(1f)) {
-                Text(text = "Naya version $version available", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                Text(text = "Update karne ke liye dabayein", color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp)
+                Text(text = "New version $version available", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Text(text = "Tap to update", color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp)
             }
             Text(text = "›", color = Color.White, fontSize = 24.sp)
         }
@@ -321,14 +321,14 @@ private fun ConnectCard(onOpenSettings: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(text = "YouTube account jodein", color = YtText, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text(text = "Connect a YouTube account", color = YtText, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             Text(
-                text = "Apne channel ke subscribers, views aur videos yahan dekhne ke liye Gmail connect karein.",
+                text = "Connect a Gmail to see your channel's subscribers, views and videos here.",
                 color = YtMuted, fontSize = 13.sp, textAlign = TextAlign.Center
             )
             Surface(onClick = onOpenSettings, shape = RoundedCornerShape(24.dp), color = YtAccent) {
                 Text(
-                    text = "Settings mein jaen", color = Color.White, fontWeight = FontWeight.Bold,
+                    text = "Go to Settings", color = Color.White, fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(horizontal = 22.dp, vertical = 12.dp)
                 )
             }
@@ -342,7 +342,7 @@ private fun ErrorCard(message: String, onRetry: () -> Unit) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(text = "⚠ $message", color = YtRed, fontSize = 13.sp)
             Text(
-                text = "Dobara koshish karein", color = YtAccent, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                text = "Try again", color = YtAccent, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.clickable { onRetry() }
             )
         }
@@ -388,7 +388,7 @@ fun YtiqVideosTab(
             dash.videos.isEmpty() && dash.loading -> LoadingBox()
             dash.videos.isEmpty() -> {
                 dash.error?.let { ErrorCard(it, onRefresh) }
-                    ?: Text(text = "Abhi koi video nahi mili.", color = YtMuted, fontSize = 14.sp)
+                    ?: Text(text = "No videos found yet.", color = YtMuted, fontSize = 14.sp)
             }
             else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 dash.error?.let { item { ErrorCard(it, onRefresh) } }

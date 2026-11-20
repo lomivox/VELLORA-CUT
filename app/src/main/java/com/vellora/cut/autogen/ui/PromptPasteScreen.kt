@@ -94,7 +94,7 @@ fun PromptPasteScreen(
 
                 if (!credentials.hasCredentials()) {
                     Text(
-                        text = "⚠️ Audio سے خودکار prompts کے لیے پہلے Settings میں Cloudflare account add کریں",
+                        text = "⚠️ To generate prompts from audio, first add a Cloudflare account in Settings",
                         color = TextSecondary,
                         fontSize = 11.sp
                     )
@@ -116,10 +116,10 @@ fun PromptPasteScreen(
                         Text(
                             text = when {
                                 audioRunning && stage == GeneratePromptsFromAudioWorker.STAGE_TRANSCRIBING ->
-                                    "Voice-over سن رہا ہے…"
-                                audioRunning -> "Prompts لکھ رہا ہے… ($doneCount/$totalCount)"
-                                existingPrompts.isNotEmpty() -> "🎙️ Audio سے دوبارہ Prompts بنائیں (موجودہ list بدل جائے گی)"
-                                else -> "🎙️ Audio سے خودکار Prompts بنائیں"
+                                    "Listening to the voice-over…"
+                                audioRunning -> "Writing prompts… ($doneCount/$totalCount)"
+                                existingPrompts.isNotEmpty() -> "🎙️ Regenerate prompts from audio (replaces the current list)"
+                                else -> "🎙️ Generate prompts from audio"
                             }
                         )
                     }
@@ -155,9 +155,9 @@ fun PromptPasteScreen(
 
                 if (!credentials.hasCredentials()) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(text = "⚠️ Cloudflare credentials set نہیں ہیں — ", color = TextSecondary, fontSize = 12.sp)
+                        Text(text = "⚠️ Cloudflare credentials are not set — ", color = TextSecondary, fontSize = 12.sp)
                         TextButton(onClick = onOpenSettings) {
-                            Text(text = "Settings کھولیں", color = CyanPrimary, fontSize = 12.sp)
+                            Text(text = "Open Settings", color = CyanPrimary, fontSize = 12.sp)
                         }
                     }
                 } else {
@@ -188,7 +188,7 @@ fun PromptPasteScreen(
                     if (isRunning) {
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "پس منظر میں چل رہا ہے — آپ اس اسکرین سے جا بھی سکتے ہیں",
+                            text = "Running in the background — you can leave this screen",
                             color = TextSecondary,
                             fontSize = 11.sp
                         )
@@ -258,7 +258,7 @@ fun PromptPasteScreen(
                                 }
                             )
                             saving = false
-                            savedMessage = "${parsed.size} prompts محفوظ ہو گئے"
+                            savedMessage = "${parsed.size} prompts saved"
                             rawText = ""
                             parsed = emptyList()
                         }

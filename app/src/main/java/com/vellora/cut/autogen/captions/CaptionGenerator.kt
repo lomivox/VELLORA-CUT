@@ -27,14 +27,14 @@ object CaptionGenerator {
     ): Result<List<CaptionSegment>> = withContext(Dispatchers.IO) {
         if (accounts.isEmpty()) {
             return@withContext Result.failure(
-                Exception("Koi Cloudflare account save nahi hai — pehle Settings mein add karein")
+                Exception("No Cloudflare account saved — add one in Settings first")
             )
         }
 
         val audioFile = try {
             resolveAudioFile(context, processedAudioPath ?: voiceOverUri)
         } catch (e: Exception) {
-            return@withContext Result.failure(Exception("Voice-over file open nahi ho saka: ${e.message}"))
+            return@withContext Result.failure(Exception("Could not open the voice-over file: ${e.message}"))
         }
 
         WhisperChunkedTranscriber.transcribe(context, audioFile, accounts, language)
@@ -49,7 +49,7 @@ object CaptionGenerator {
             val dest = File(dir, "source_${System.currentTimeMillis()}")
             context.contentResolver.openInputStream(uri)?.use { input ->
                 FileOutputStream(dest).use { output -> input.copyTo(output) }
-            } ?: throw IllegalStateException("Audio URI khol nahi saka")
+            } ?: throw IllegalStateException("Could not open the audio URI")
             dest
         }
     }

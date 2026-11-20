@@ -58,7 +58,7 @@ object ShortsMetadataGenerator {
         val geminiKeys = store.geminiKeys
         if (accounts.isEmpty() && geminiKeys.isEmpty()) {
             return@withContext Result.failure(
-                Exception("Koi Gemini key ya Cloudflare account save nahi hai — pehle Settings mein add karein")
+                Exception("No Gemini key or Cloudflare account saved — add one in Settings first")
             )
         }
         // When only a typed topic/title is given (no video), that text is the authority on what the video is about.
@@ -91,14 +91,14 @@ object ShortsMetadataGenerator {
             // Person typed their own topic — it is used exactly like a transcript from here on.
             transcript = manualTopic
         } else {
-            return@withContext Result.failure(Exception("Video ya topic mein se koi ek dein"))
+            return@withContext Result.failure(Exception("Provide either a video or a topic"))
         }
 
         val audioForGemini = audioFile?.takeIf { it.length() in 1..MAX_INLINE_AUDIO_BYTES }
         val canGeminiPerceive = geminiKeys.isNotEmpty() && (frames.isNotEmpty() || audioForGemini != null)
         if (transcript.isBlank() && hint.isBlank() && !canGeminiPerceive) {
             return@withContext Result.failure(
-                Exception("Video mein awaz nahi mili aur koi topic hint bhi nahi — upar hint likh kar dobara try karein")
+                Exception("No speech found in the video and no topic hint either — write a hint above and try again")
             )
         }
 
@@ -182,7 +182,7 @@ object ShortsMetadataGenerator {
             if (!rawResponse.isNullOrBlank() && !isAcceptable(rawResponse!!)) {
                 degenerateCandidate = rawResponse
                 rawResponse = null
-                lastError = "Gemini ka jawab bar bar dohra raha tha"
+                lastError = "Gemini's answer kept repeating"
             }
         }
 
@@ -207,7 +207,7 @@ object ShortsMetadataGenerator {
                             succeeded = true
                         } else {
                             degenerateCandidate = candidate
-                            lastError = "AI ka jawab bar bar dohra raha tha"
+                            lastError = "The AI's answer kept repeating"
                             if (attempt == 0) delay(1000)
                         }
                     } catch (e: CloudflareApiException) {
@@ -224,7 +224,7 @@ object ShortsMetadataGenerator {
 
         val finalRaw: String = rawResponse?.takeIf { it.isNotBlank() }
             ?: degenerateCandidate?.takeIf { it.isNotBlank() }
-            ?: return@withContext Result.failure(Exception(lastError ?: "Title/Description generate nahi ho saki"))
+            ?: return@withContext Result.failure(Exception(lastError ?: "Could not generate the Title/Description"))
 
         val parsed = cleanParsed(parseResponse(finalRaw))
         val title = if (parsed.first == "Untitled" && hint.isNotBlank()) hint.take(100) else parsed.first

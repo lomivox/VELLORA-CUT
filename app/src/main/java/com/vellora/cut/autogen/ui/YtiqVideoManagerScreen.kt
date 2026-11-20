@@ -1,6 +1,5 @@
 package com.vellora.cut.autogen.ui
 
-import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -55,7 +54,6 @@ import com.vellora.cut.autogen.network.YouTubeVideoManager
 import com.vellora.cut.autogen.network.YtResult
 import kotlinx.coroutines.launch
 import org.json.JSONArray
-import org.json.JSONObject
 
 private fun normalize(s: String): String = s.lowercase()
 
@@ -118,7 +116,7 @@ private fun findDuplicates(videos: List<ManagedVideo>): List<DuplicateGroup> {
             if (sameTitle) reasons.add("Title bilkul ek jaisa")
             if (similar) reasons.add("Title milta-julta")
             if (sameDesc) reasons.add("Description ek jaisi")
-            if (sameLength) reasons.add("Length bhi ek jaisi (shayad ek hi video dobara upload hui)")
+            if (sameLength) reasons.add("Length is also the same (maybe the same video was uploaded again)")
             val ri = find(i)
             val rj = find(j)
             if (ri != rj) parent[ri] = rj
@@ -154,24 +152,18 @@ fun YtiqVideoManagerScreen(
     var query by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf<ManagedVideo?>(null) }
     var showDuplicates by remember { mutableStateOf(false) }
-    var confirmFix by remember { mutableStateOf<FixRequest?>(null) }
-    var confirmRestore by remember { mutableStateOf(false) }
-    var fixOpen by remember { mutableStateOf(false) }
-    var fixRunning by remember { mutableStateOf(false) }
-    var fixText by remember { mutableStateOf("") }
-    var fixCancel by remember { mutableStateOf(false) }
-    var backupCount by remember { mutableStateOf(TitleBackup.count(context)) }
+    var bulkGroups by remember { mutableStateOf<List<List<ManagedVideo>>?>(null) }
 
     /** A fresh login token for the selected channel, or null (the reason goes into [error]). */
     suspend fun token(): String? {
         if (email == null) {
-            error = "Pehle koi channel jodein"
+            error = "Connect a channel first"
             return null
         }
         return when (val t = YouTubeAuthManager.getFreshAccessToken(context, email)) {
             is YouTubeAuthManager.TokenResult.Success -> t.accessToken
             is YouTubeAuthManager.TokenResult.NeedsUserAction -> {
-                error = "Is channel ki permission dobara chahiye — Settings mein Remove kar ke dobara jodein"
+                error = "This channel's permission is needed again — remove it in Settings and connect it again"
                 null
             }
             is YouTubeAuthManager.TokenResult.Error -> {
@@ -189,7 +181,7 @@ fun YtiqVideoManagerScreen(
             val t = token()
             if (t != null) {
                 if (uploadsId == null) {
-                    error = "Channel ki videos ki list nahi mili — Home khol kar dobara aayein"
+                    error = "The channel's video list was not found — open Home and come back"
                 } else {
                     when (val r = YouTubeVideoManager.listAll(t, uploadsId)) {
                         is YtResult.Ok -> videos = r.value
@@ -198,78 +190,6 @@ fun YtiqVideoManagerScreen(
                 }
             }
             loading = false
-        }
-    }
-
-    fun startFix(req: FixRequest) {
-        scope.launch {
-            fixOpen = true
-            fixRunning = true
-            fixCancel = false
-            fixText = "Shuru ho raha hai…"
-            com.vellora.cut.autogen.render.RenderKeepAliveService.start(context, "Titles badal rahi hai…")
-            try {
-                val t = token()
-                if (t == null) {
-                    fixText = "⚠ ${error ?: "Login nahi mila — Settings mein channel Remove kar ke dobara jodein"}"
-                } else {
-                    val report = autoRetitle(
-                        context, req.groups, req.keepOldest, videos, t,
-                        isCancelled = { fixCancel },
-                        onProgress = { fixText = it },
-                        onSaved = { updated -> videos = videos.map { if (it.id == updated.id) updated else it } }
-                    )
-                    fixText = report.summary()
-                    backupCount = TitleBackup.count(context)
-                }
-            } finally {
-                com.vellora.cut.autogen.render.RenderKeepAliveService.stop(context)
-                fixRunning = false
-            }
-        }
-    }
-
-    fun startRestore() {
-        scope.launch {
-            fixOpen = true
-            fixRunning = true
-            fixCancel = false
-            fixText = "Purane titles wapas lag rahe hain…"
-            com.vellora.cut.autogen.render.RenderKeepAliveService.start(context, "Purane titles wapas lag rahe hain…")
-            try {
-                val t = token()
-                if (t == null) {
-                    fixText = "⚠ ${error ?: "Login nahi mila — Settings mein channel Remove kar ke dobara jodein"}"
-                } else {
-                    val backup = TitleBackup.load(context)
-                    var restored = 0
-                    var firstErr: String? = null
-                    val doneIds = HashSet<String>()
-                    for ((i, b) in backup.withIndex()) {
-                        if (fixCancel) break
-                        val cur = videos.firstOrNull { it.id == b.id } ?: continue
-                        fixText = "Wapas lag rahi hain… ${i + 1}/${backup.size}"
-                        when (val res = YouTubeVideoManager.update(t, cur, b.title, b.description, cur.tags)) {
-                            is YtResult.Ok -> {
-                                restored++
-                                doneIds.add(b.id)
-                                videos = videos.map { if (it.id == res.value.id) res.value else it }
-                            }
-                            is YtResult.Fail -> {
-                                if (firstErr == null) firstErr = res.message
-                                val m = res.message.lowercase()
-                                if ("quota" in m || "ijazat" in m || "login" in m) break
-                            }
-                        }
-                    }
-                    TitleBackup.remove(context, doneIds)
-                    backupCount = TitleBackup.count(context)
-                    fixText = "↩ $restored videos ke purane title wapas lag gaye." + (firstErr?.let { "\n⚠ $it" } ?: "")
-                }
-            } finally {
-                com.vellora.cut.autogen.render.RenderKeepAliveService.stop(context)
-                fixRunning = false
-            }
         }
     }
 
@@ -293,13 +213,13 @@ fun YtiqVideoManagerScreen(
                 modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                ModeChip("Sab videos", !showDuplicates) { showDuplicates = false }
+                ModeChip("All videos", !showDuplicates) { showDuplicates = false }
                 ModeChip("🔁 Duplicates", showDuplicates) { showDuplicates = true }
             }
             if (!showDuplicates) OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
-                placeholder = { Text("Apni videos mein dhoondein (title, description, tag)") },
+                placeholder = { Text("Search your videos (title, description, tag)") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 colors = OutlinedTextFieldDefaults.colors(
@@ -310,9 +230,9 @@ fun YtiqVideoManagerScreen(
             )
             Text(
                 text = when {
-                    showDuplicates && groups.isEmpty() -> "Koi duplicate nahi mila ✅ (${videos.size} videos check hui)"
-                    showDuplicates -> "${groups.size} group mile • ${groups.sumOf { it.videos.size }} videos ek jaisi lag rahi hain. " +
-                        "Pehle dono chala kar dekh lein, phir jo faltu ho use delete karein."
+                    showDuplicates && groups.isEmpty() -> "No duplicates found ✅ (${videos.size} videos checked)"
+                    showDuplicates -> "${groups.size} groups found • ${groups.sumOf { it.videos.size }} videos look the same. " +
+                        "Review both first, then delete the unneeded one."
                     query.isBlank() -> "${videos.size} videos"
                     else -> "${filtered.size} / ${videos.size} videos mile"
                 },
@@ -323,22 +243,14 @@ fun YtiqVideoManagerScreen(
                 Text(text = "⚠ $it", color = YtText, fontSize = 13.sp, modifier = Modifier.padding(bottom = 8.dp))
             }
             if (videos.isEmpty() && !loading && error == null) {
-                Text(text = "Abhi koi video nahi.", color = YtMuted, fontSize = 13.sp)
+                Text(text = "No videos yet.", color = YtMuted, fontSize = 13.sp)
             }
             LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (showDuplicates) {
-                    if (groups.isNotEmpty() || backupCount > 0) {
-                        item(key = "fixAll") {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                if (groups.isNotEmpty()) {
-                                    ActionButton(
-                                        "⚡ Ek button: sab duplicates ke naye titles lagayein (${groups.sumOf { it.videos.size - 1 }} videos)",
-                                        primary = true
-                                    ) { confirmFix = FixRequest(groups.map { it.videos }, true) }
-                                }
-                                if (backupCount > 0) {
-                                    ActionButton("↩ Pichli tabdeeli wapas karein ($backupCount videos)") { confirmRestore = true }
-                                }
+                    if (groups.isNotEmpty()) {
+                        item(key = "bulkAll") {
+                            ActionButton("🤖 Generate new titles for all groups (${groups.sumOf { it.videos.size }} videos)") {
+                                bulkGroups = groups.map { it.videos }
                             }
                         }
                     }
@@ -350,9 +262,9 @@ fun YtiqVideoManagerScreen(
                                     color = YtText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold
                                 )
                                 Text(
-                                    text = "⚡ Sirf is group ko theek karein",
+                                    text = "🤖 Generate new titles for this group only",
                                     color = YtAccent, fontSize = 13.sp,
-                                    modifier = Modifier.clickable { confirmFix = FixRequest(listOf(g.videos), true) }.padding(vertical = 6.dp)
+                                    modifier = Modifier.clickable { bulkGroups = listOf(g.videos) }.padding(vertical = 6.dp)
                                 )
                             }
                         }
@@ -360,20 +272,13 @@ fun YtiqVideoManagerScreen(
                         val oldest = g.videos.minByOrNull { it.publishedAt }
                         items(g.videos, key = { "g$gi-${it.id}" }) { v ->
                             val badge = listOfNotNull(
-                                if (v === mostViews) "⭐ sab se zyada views" else null,
-                                if (v === oldest) "🕒 sab se purani" else null
+                                if (v === mostViews) "⭐ most views" else null,
+                                if (v === oldest) "🕒 oldest" else null
                             ).joinToString(" • ")
                             ManagedVideoRow(v, badge.ifBlank { null }) { editing = v }
                         }
                     }
                 } else {
-                    if (query.isNotBlank() && filtered.size >= 2) {
-                        item(key = "fixSearch") {
-                            ActionButton("⚡ In ${filtered.size} videos ke titles naye banayein", primary = true) {
-                                confirmFix = FixRequest(listOf(filtered.sortedBy { it.publishedAt }), false)
-                            }
-                        }
-                    }
                     items(filtered, key = { it.id }) { v ->
                         ManagedVideoRow(v, null) { editing = v }
                     }
@@ -383,51 +288,16 @@ fun YtiqVideoManagerScreen(
         }
     }
 
-    confirmFix?.let { req ->
-        val n = req.groups.sumOf { if (req.keepOldest) maxOf(it.size - 1, 0) else it.size }
-        AlertDialog(
-            onDismissRequest = { confirmFix = null },
-            title = { Text("$n videos ke titles badlein?") },
-            text = {
-                Text(
-                    (if (req.keepOldest) "Har group ki sab se purani video jaisi hai waisi rahegi. " else "") +
-                        "Baaqi $n videos ke title aur description AI se naye ban kar seedhe YouTube par save honge. " +
-                        "Purane title phone mein save rahenge, 'Wapas' button se laut sakte hain. " +
-                        "Isme kuch minute lag sakte hain, app khuli rakhein."
-                )
+    bulkGroups?.let { gs ->
+        BulkRetitleDialog(
+            groups = gs,
+            allVideos = videos,
+            tokenProvider = { token() },
+            onUpdated = { updated ->
+                videos = videos.map { v -> updated.firstOrNull { it.id == v.id } ?: v }
             },
-            confirmButton = { TextButton(onClick = { confirmFix = null; startFix(req) }) { Text("Haan, shuru karein") } },
-            dismissButton = { TextButton(onClick = { confirmFix = null }) { Text("Nahi") } }
+            onDismiss = { bulkGroups = null }
         )
-    }
-
-    if (confirmRestore) {
-        AlertDialog(
-            onDismissRequest = { confirmRestore = false },
-            title = { Text("Purane titles wapas lagayein?") },
-            text = { Text("Pichli tabdeeli ke $backupCount videos ke purane title aur description wapas YouTube par lag jayenge.") },
-            confirmButton = { TextButton(onClick = { confirmRestore = false; startRestore() }) { Text("Haan, wapas karein") } },
-            dismissButton = { TextButton(onClick = { confirmRestore = false }) { Text("Nahi") } }
-        )
-    }
-
-    if (fixOpen) {
-        Dialog(
-            onDismissRequest = { if (!fixRunning) fixOpen = false },
-            properties = DialogProperties(dismissOnBackPress = !fixRunning, dismissOnClickOutside = false)
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(YtCard).padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                Text(text = fixText, color = YtText, fontSize = 14.sp)
-                if (fixRunning) {
-                    ActionButton("⏹ Rok dein") { fixCancel = true }
-                } else {
-                    ActionButton("Theek hai", primary = true) { fixOpen = false }
-                }
-            }
-        }
     }
 
     editing?.let { current ->
@@ -449,6 +319,17 @@ fun YtiqVideoManagerScreen(
 }
 
 
+private class BulkRow(
+    val video: ManagedVideo,
+    val kept: Boolean,
+    newTitle: String,
+    val newDesc: String,
+    apply: Boolean
+) {
+    var newTitle by mutableStateOf(newTitle)
+    var apply by mutableStateOf(apply)
+}
+
 private fun parseBulk(text: String): Map<String, Pair<String, String>> {
     val start = text.indexOf('[')
     val end = text.lastIndexOf(']')
@@ -467,156 +348,218 @@ private fun parseBulk(text: String): Map<String, Pair<String, String>> {
     }
 }
 
-private class FixRequest(val groups: List<List<ManagedVideo>>, val keepOldest: Boolean)
-
-private class FixReport {
-    var changed = 0
-    var skipped = 0
-    var firstError: String? = null
-    var cancelled = false
-    fun summary(): String = buildString {
-        if (cancelled) append("⏹ Roka gaya. ")
-        append("✅ $changed videos ke title badal gaye.")
-        if (skipped > 0) append("\n⚠ $skipped videos nahi badli (naya title ek jaisa aaya ya AI se nahi mila) — button dobara dabayein, jo bachi hain wo theek ho jayengi.")
-        firstError?.let { append("\n⚠ $it") }
-        if (changed > 0) append("\n↩ Purane titles phone mein save hain, 'Wapas' button se laut sakte hain.")
-    }
-}
-
-private class BackupEntry(val id: String, val title: String, val description: String)
-
-/** The old title/description of every video changed by the LAST one-button run, kept on the phone so it can be undone. */
-private object TitleBackup {
-    private const val PREFS = "ytiq_title_backup"
-    private const val KEY = "batch"
-    private fun prefs(c: Context) = c.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-
-    private fun readArray(c: Context): JSONArray =
-        try { JSONArray(prefs(c).getString(KEY, "[]")) } catch (e: Exception) { JSONArray() }
-
-    fun clear(c: Context) { prefs(c).edit().remove(KEY).apply() }
-
-    fun add(c: Context, v: ManagedVideo) {
-        val arr = readArray(c)
-        for (i in 0 until arr.length()) if (arr.optJSONObject(i)?.optString("id") == v.id) return
-        arr.put(JSONObject().put("id", v.id).put("title", v.title).put("description", v.description))
-        prefs(c).edit().putString(KEY, arr.toString()).apply()
-    }
-
-    fun load(c: Context): List<BackupEntry> {
-        val arr = readArray(c)
-        return (0 until arr.length()).mapNotNull { i ->
-            val o = arr.optJSONObject(i) ?: return@mapNotNull null
-            BackupEntry(o.optString("id"), o.optString("title"), o.optString("description"))
-        }
-    }
-
-    fun count(c: Context): Int = readArray(c).length()
-
-    fun remove(c: Context, ids: Set<String>) {
-        val arr = readArray(c)
-        val keep = JSONArray()
-        for (i in 0 until arr.length()) {
-            val o = arr.optJSONObject(i) ?: continue
-            if (o.optString("id") !in ids) keep.put(o)
-        }
-        prefs(c).edit().putString(KEY, keep.toString()).apply()
-    }
-}
-
 /**
- * The one-button job: for every duplicate group the AI writes a different, related title (and description) for each
- * video, in chunks of 6, and every video is saved to YouTube straight away. A title that would again match another
- * video's title is skipped. The old text of each video is stored first so the whole run can be undone.
+ * Gives every duplicate its OWN new title (and description): the AI looks at each video's present title, description
+ * and tags and writes different, related ones, so no two videos stay the same. Nothing is saved until the person
+ * reviews (and can edit) the proposals and presses apply; the videos are then updated one after another.
  */
-private suspend fun autoRetitle(
-    context: Context,
+@Composable
+private fun BulkRetitleDialog(
     groups: List<List<ManagedVideo>>,
-    keepOldest: Boolean,
     allVideos: List<ManagedVideo>,
-    token: String,
-    isCancelled: () -> Boolean,
-    onProgress: (String) -> Unit,
-    onSaved: (ManagedVideo) -> Unit
-): FixReport {
-    val report = FixReport()
-    TitleBackup.clear(context)
-    val taken = HashSet<String>(allVideos.map { normText(it.title) })
-    val total = groups.sumOf { if (keepOldest) maxOf(it.size - 1, 0) else it.size }
-    var done = 0
-    outer@ for ((gi, group) in groups.withIndex()) {
-        val keptTitle = if (keepOldest) group.firstOrNull()?.title else null
-        val targets = if (keepOldest) group.drop(1) else group
-        val newInGroup = ArrayList<String>()
-        for (chunk in targets.chunked(6)) {
-            if (isCancelled()) {
-                report.cancelled = true
-                break@outer
-            }
-            onProgress("Group ${gi + 1}/${groups.size} • $done/$total videos • AI likh raha hai…")
-            val prompt = buildString {
-                append("Neeche ek hi video ki kai copies (duplicate videos) hain jin ke title ya description ek jaise hain. ")
-                append("Har video ke liye ALAG naya title aur ALAG nayi description likho, taake koi bhi do video ek jaisi na rahein, ")
-                append("lekin sab video ke asal topic se related rahein.\n")
-                append("Qaide:\n")
-                append("- Har title 100 huroof se kam, clickable, usi zaban aur usi script mein jis mein purane titles hain.\n")
-                append("- Har video ka title alag pehlu (angle) se ho aur alag lafz se shuru ho; purane title ya ek doosre ki nakal na ho.\n")
-                append("- Asal topic mat badlo. Koi nayi kahani, naam, dawa ya wada mat jodo jo purane title/description mein nahi.\n")
-                append("- Har description alag ho: 2 chhote paragraphs, kul 500 huroof se kam, aur kisi doosri description ke jumle dohrao mat.\n")
-                val avoid = (listOfNotNull(keptTitle) + newInGroup).take(12)
-                if (avoid.isNotEmpty()) {
-                    append("- Ye titles pehle se maujood hain, naye titles in jaise na hon:\n")
-                    avoid.forEach { append("  * ").append(it).append("\n") }
+    tokenProvider: suspend () -> String?,
+    onUpdated: (List<ManagedVideo>) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val rows = remember { mutableStateListOf<BulkRow>() }
+    var keepOldest by remember { mutableStateOf(true) }
+    var changeDesc by remember { mutableStateOf(true) }
+    var busy by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var started by remember { mutableStateOf(false) }
+
+    fun generate() {
+        if (busy) return
+        scope.launch {
+            busy = true
+            message = null
+            rows.clear()
+            var failed = 0
+            groups.forEachIndexed { gi, group ->
+                // group is sorted oldest first
+                val targets = if (keepOldest) group.drop(1) else group
+                if (group.isNotEmpty() && keepOldest) {
+                    rows.add(BulkRow(group.first(), true, group.first().title, group.first().description, false))
                 }
-                append("\nVideos jin ke liye likhna hai:\n")
-                chunk.forEachIndexed { i, v ->
-                    append("${i + 1}) ID: ${v.id} | Title: ${v.title} | Description: ${v.description.take(300).replace('\n', ' ')} | Tags: ${v.tags.take(6).joinToString(", ")}\n")
-                }
-                append("\nJawab sirf JSON array mein do, koi aur lafz nahi:\n")
-                append("[{\"id\":\"<ID>\",\"title\":\"...\",\"description\":\"...\"}]")
-            }
-            val parsed = when (val ai = YtiqAi.text(context, prompt)) {
-                is YtiqAiResult.Ok -> parseBulk(ai.text)
-                is YtiqAiResult.Fail -> {
-                    report.firstError = ai.message
-                    break@outer
-                }
-            }
-            for (v in chunk) {
-                if (isCancelled()) {
-                    report.cancelled = true
-                    break@outer
-                }
-                val p = parsed[v.id]
-                val newTitle = p?.first?.trim().orEmpty()
-                val norm = normText(newTitle)
-                if (newTitle.isBlank() || YouTubeVideoManager.validate(newTitle, v.description, v.tags) != null || norm in taken) {
-                    report.skipped++
-                    done++
-                    continue
-                }
-                val newDesc = p?.second?.takeIf { it.isNotBlank() && YouTubeVideoManager.validate(newTitle, it, v.tags) == null } ?: v.description
-                TitleBackup.add(context, v)
-                onProgress("Group ${gi + 1}/${groups.size} • ${done + 1}/$total videos • YouTube par save ho raha hai…")
-                when (val res = YouTubeVideoManager.update(token, v, newTitle, newDesc, v.tags)) {
-                    is YtResult.Ok -> {
-                        taken.add(norm)
-                        newInGroup.add(newTitle)
-                        report.changed++
-                        onSaved(res.value)
+                if (targets.isEmpty()) return@forEachIndexed
+                message = "AI is writing… group ${gi + 1}/${groups.size}"
+                val prompt = buildString {
+                    append("Below are several copies (duplicate videos) of the same video whose titles or descriptions are identical. ")
+                    append("Write a DIFFERENT new title and a DIFFERENT new description for each video so no two videos look alike, ")
+                    append("but all stay related to the video's real topic.\n")
+                    append("Qaide:\n")
+                    append("- Each title under 100 characters, clickable, in the same language and script as the old titles.\n")
+                    append("- Each video's title should take a different angle and start with a different word; do not copy the old title or each other.\n")
+                    append("- Do not change the real topic. Do not add any new story, name, claim or promise that is not in the old title/description.\n")
+                    append("- Each description must be different (2 to 3 short paragraphs); do not repeat sentences from any other description.\n")
+                    if (keepOldest) {
+                        append("- This video stays as it is; the new titles must differ from it too: \"${group.first().title}\"\n")
                     }
-                    is YtResult.Fail -> {
-                        report.skipped++
-                        if (report.firstError == null) report.firstError = res.message
-                        val m = res.message.lowercase()
-                        if ("quota" in m || "ijazat" in m || "login" in m) break@outer
+                    append("\nVideos to write for:\n")
+                    targets.forEachIndexed { i, v ->
+                        append("${i + 1}) ID: ${v.id} | Title: ${v.title} | Description: ${v.description.take(400).replace('\n', ' ')} | Tags: ${v.tags.take(8).joinToString(", ")}\n")
+                    }
+                    append("\nAnswer as a JSON array only, no other words:\n")
+                    append("[{\"id\":\"<ID>\",\"title\":\"...\",\"description\":\"...\"}]")
+                }
+                val parsed = when (val ai = YtiqAi.text(context, prompt)) {
+                    is YtiqAiResult.Ok -> parseBulk(ai.text)
+                    is YtiqAiResult.Fail -> {
+                        message = "⚠ ${ai.message}"
+                        emptyMap()
                     }
                 }
-                done++
+                targets.forEach { v ->
+                    val p = parsed[v.id]
+                    if (p != null && p.first.isNotBlank()) {
+                        rows.add(BulkRow(v, false, p.first, p.second, true))
+                    } else {
+                        failed++
+                        rows.add(BulkRow(v, false, v.title, v.description, false))
+                    }
+                }
+            }
+            message = if (failed > 0) "⚠ AI did not return a new title for $failed videos — they were skipped; generate again or write them yourself"
+            else "Review them, edit what you want to change, then tap Apply"
+            busy = false
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (!started) {
+            started = true
+            generate()
+        }
+    }
+
+    fun applyAll() {
+        if (busy) return
+        val chosen = rows.filter { it.apply && !it.kept }
+        if (chosen.isEmpty()) {
+            message = "⚠ No video selected"
+            return
+        }
+        // Every title must be valid and different from every other video's title.
+        val others = allVideos.filter { v -> chosen.none { it.video.id == v.id } }.map { normText(it.title) }.toSet()
+        val seen = HashSet<String>()
+        for (r in chosen) {
+            val t = r.newTitle.trim()
+            val problem = YouTubeVideoManager.validate(t, r.video.description, r.video.tags)
+            if (problem != null) {
+                message = "⚠ \"${r.video.title.take(30)}\": $problem"
+                return
+            }
+            val n = normText(t)
+            if (n == normText(r.video.title) || n in others || !seen.add(n)) {
+                message = "⚠ The title is the same: \"${t.take(40)}\" — every video needs a different title"
+                return
+            }
+        }
+        scope.launch {
+            busy = true
+            val token = tokenProvider()
+            if (token == null) {
+                message = "⚠ Login not found — remove the channel in Settings and connect it again"
+                busy = false
+                return@launch
+            }
+            val updated = ArrayList<ManagedVideo>()
+            var firstError: String? = null
+            chosen.forEachIndexed { i, r ->
+                message = "Saving… ${i + 1}/${chosen.size}"
+                val desc = if (changeDesc && r.newDesc.isNotBlank()) r.newDesc else r.video.description
+                when (val res = YouTubeVideoManager.update(token, r.video, r.newTitle.trim(), desc, r.video.tags)) {
+                    is YtResult.Ok -> updated.add(res.value)
+                    is YtResult.Fail -> if (firstError == null) firstError = res.message
+                }
+            }
+            busy = false
+            // What was saved is shown in the list straight away; rows that worked are not applied twice.
+            onUpdated(updated)
+            val savedIds = updated.map { it.id }.toSet()
+            rows.forEach { if (it.video.id in savedIds) it.apply = false }
+            if (firstError == null) {
+                onDismiss()
+            } else {
+                message = "⚠ ${updated.size} videos saved, the rest were not: $firstError"
             }
         }
     }
-    return report
+
+    Dialog(onDismissRequest = { if (!busy) onDismiss() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(YtBg)
+                .statusBarsPadding()
+                .imePadding()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "New titles (for duplicates)", color = YtText, fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = "✕", color = YtText, fontSize = 20.sp,
+                    modifier = Modifier.clickable(enabled = !busy) { onDismiss() }.padding(8.dp)
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ModeChip(if (keepOldest) "✓ Do not change the oldest" else "Do not change the oldest", keepOldest) { if (!busy) keepOldest = !keepOldest }
+                ModeChip(if (changeDesc) "✓ Description too" else "Description too", changeDesc) { if (!busy) changeDesc = !changeDesc }
+            }
+            message?.let { Text(text = it, color = YtText, fontSize = 13.sp) }
+            ActionButton(if (busy) "Ruko…" else "🔄 Generate new titles", enabled = !busy) { generate() }
+            val fieldColors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = YtText, unfocusedTextColor = YtText,
+                focusedBorderColor = YtAccent, unfocusedBorderColor = YtCard,
+                focusedContainerColor = YtCard, unfocusedContainerColor = YtCard,
+                focusedLabelColor = YtMuted, unfocusedLabelColor = YtMuted
+            )
+            rows.forEach { r ->
+                Column(
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(YtCard).padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RemoteImage(url = r.video.thumbUrl, modifier = Modifier.width(80.dp).height(45.dp).clip(RoundedCornerShape(8.dp)))
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = (if (r.kept) "Stays as it is: " else "Old: ") + r.video.title, color = YtMuted, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(text = "ID: ${r.video.id}", color = YtMuted, fontSize = 11.sp)
+                        }
+                    }
+                    if (!r.kept) {
+                        OutlinedTextField(
+                            value = r.newTitle, onValueChange = { r.newTitle = it },
+                            label = { Text("New title (${r.newTitle.length}/100)") },
+                            modifier = Modifier.fillMaxWidth(), minLines = 1, maxLines = 4, enabled = !busy, colors = fieldColors
+                        )
+                        if (changeDesc && r.newDesc.isNotBlank()) {
+                            Text(text = "New description: " + r.newDesc.replace('\n', ' ').take(140) + "…", color = YtMuted, fontSize = 11.sp)
+                        }
+                        Text(
+                            text = if (r.apply) "☑ Change this" else "☐ Skip this",
+                            color = YtText, fontSize = 13.sp,
+                            modifier = Modifier.clickable(enabled = !busy) { r.apply = !r.apply }.padding(vertical = 4.dp)
+                        )
+                    }
+                }
+            }
+            if (rows.any { !it.kept }) {
+                ActionButton(
+                    if (busy) "Ruko…" else "💾 Apply (${rows.count { it.apply && !it.kept }} videos on YouTube)",
+                    enabled = !busy, primary = true
+                ) { applyAll() }
+            }
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
 }
 
 @Composable
@@ -698,7 +641,7 @@ private fun EditVideoDialog(
             message = null
             val t = tokenProvider()
             if (t == null) {
-                message = "⚠ Login nahi mila — Settings mein channel Remove kar ke dobara jodein"
+                message = "⚠ Login not found — remove the channel in Settings and connect it again"
             } else {
                 when (val r = YouTubeVideoManager.update(t, video, title.trim(), description, tags)) {
                     is YtResult.Ok -> {
@@ -717,23 +660,23 @@ private fun EditVideoDialog(
         if (busy) return
         scope.launch {
             busy = true
-            message = "AI likh raha hai…"
-            val prompt = "Neeche ek YouTube video ka title aur description hai. Inhe behtar SEO ke liye dobara likho: " +
-                "title clickable aur 100 huroof se kam, description 2-3 chhote paragraphs mein, 10 se 15 tags. " +
-                "Usi zaban aur usi script mein likho jis mein asal title hai, aur video ka asal topic mat badlo, " +
-                "koi nayi kahani ya dawa mat jodo.\n\nTitle: ${title.trim()}\n\nDescription:\n${description.take(1500)}\n\n" +
-                "Jawab bilkul is format mein do, aur kuch nahi:\nTITLE: <title>\nDESCRIPTION: <description>\nTAGS: <comma se alag tags>"
+            message = "AI is writing…"
+            val prompt = "Below are a YouTube video's title and description. Rewrite them for better SEO: " +
+                "the title clickable and under 100 characters, the description in 2-3 short paragraphs, 10 to 15 tags. " +
+                "Write in the same language and script as the original title, and do not change the video's real topic, " +
+                "do not add any new story or claim.\n\nTitle: ${title.trim()}\n\nDescription:\n${description.take(1500)}\n\n" +
+                "Answer in exactly this format and nothing else:\nTITLE: <title>\nDESCRIPTION: <description>\nTAGS: <comma-separated tags>"
             when (val ai = YtiqAi.text(context, prompt)) {
                 is YtiqAiResult.Fail -> message = "⚠ ${ai.message}"
                 is YtiqAiResult.Ok -> {
                     val m = Regex("(?is)TITLE:\\s*(.*?)\\s*DESCRIPTION:\\s*(.*?)\\s*TAGS:\\s*(.*)").find(ai.text)
                     if (m == null) {
-                        message = "⚠ AI ka jawab samajh nahi aaya — dobara try karein"
+                        message = "⚠ Could not understand the AI's answer — try again"
                     } else {
                         title = m.groupValues[1].trim().take(100)
                         description = m.groupValues[2].trim()
                         tagsText = m.groupValues[3].trim()
-                        message = "AI ne naya likha — dekh kar Save dabayein"
+                        message = "AI wrote a new version — review it and tap Save"
                     }
                 }
             }
@@ -754,7 +697,7 @@ private fun EditVideoDialog(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "Video badlein", color = YtText, fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                    text = "Edit video", color = YtText, fontSize = 18.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f)
                 )
                 Text(
@@ -768,7 +711,7 @@ private fun EditVideoDialog(
                 color = YtMuted, fontSize = 12.sp,
                 modifier = Modifier.clickable {
                     clipboard.setText(AnnotatedString(video.id))
-                    message = "ID copy ho gayi: ${video.id}"
+                    message = "ID copied: ${video.id}"
                 }
             )
             val fieldColors = OutlinedTextFieldDefaults.colors(
@@ -789,15 +732,15 @@ private fun EditVideoDialog(
             )
             OutlinedTextField(
                 value = tagsText, onValueChange = { tagsText = it },
-                label = { Text("Tags (comma se alag)") },
+                label = { Text("Tags (comma-separated)") },
                 modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 5, enabled = !busy, colors = fieldColors
             )
             message?.let { Text(text = it, color = YtText, fontSize = 13.sp) }
 
-            ActionButton(if (busy) "Ruko…" else "💾 Save (YouTube par)", enabled = !busy, primary = true) { save() }
-            ActionButton("🤖 AI se behtar banao", enabled = !busy) { improveWithAi() }
-            ActionButton("▶ Video chalayein", enabled = !busy) { onPlay(video.id, video.title) }
-            ActionButton("🗑 Video delete karein", enabled = !busy) { confirmDelete = true }
+            ActionButton(if (busy) "Ruko…" else "💾 Save (to YouTube)", enabled = !busy, primary = true) { save() }
+            ActionButton("🤖 Improve with AI", enabled = !busy) { improveWithAi() }
+            ActionButton("▶ Play video", enabled = !busy) { onPlay(video.id, video.title) }
+            ActionButton("🗑 Delete video", enabled = !busy) { confirmDelete = true }
             Spacer(modifier = Modifier.height(24.dp))
         }
     }
@@ -805,8 +748,8 @@ private fun EditVideoDialog(
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("Video delete karein?") },
-            text = { Text("\"${video.title}\" YouTube se hamesha ke liye hat jayegi aur wapas nahi aa sakti.") },
+            title = { Text("Delete video?") },
+            text = { Text("\"${video.title}\" will be removed from YouTube permanently and cannot be recovered.") },
             confirmButton = {
                 TextButton(onClick = {
                     confirmDelete = false
@@ -815,7 +758,7 @@ private fun EditVideoDialog(
                         message = null
                         val t = tokenProvider()
                         if (t == null) {
-                            message = "⚠ Login nahi mila — Settings mein channel Remove kar ke dobara jodein"
+                            message = "⚠ Login not found — remove the channel in Settings and connect it again"
                         } else {
                             when (val r = YouTubeVideoManager.delete(t, video.id)) {
                                 is YtResult.Ok -> {
@@ -830,7 +773,7 @@ private fun EditVideoDialog(
                     }
                 }) { Text("Haan, delete") }
             },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Nahi") } }
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("No") } }
         )
     }
 }

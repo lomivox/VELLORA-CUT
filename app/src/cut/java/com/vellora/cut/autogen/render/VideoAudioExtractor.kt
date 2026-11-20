@@ -53,7 +53,7 @@ object VideoAudioExtractor {
         val dest = File(workDir, "source_video")
         context.contentResolver.openInputStream(uri)?.use { input ->
             FileOutputStream(dest).use { output -> input.copyTo(output) }
-        } ?: throw IllegalStateException("Video URI khol nahi saka")
+        } ?: throw IllegalStateException("Could not open the video URI")
         return dest
     }
 }

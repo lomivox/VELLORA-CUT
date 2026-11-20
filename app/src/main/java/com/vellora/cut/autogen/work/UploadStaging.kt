@@ -96,7 +96,7 @@ object UploadFormat {
     }
 
     fun duration(seconds: Long): String {
-        if (seconds < 0) return "hisaab lag raha hai…"
+        if (seconds < 0) return "calculating…"
         val h = seconds / 3600
         val m = (seconds % 3600) / 60
         val s = seconds % 60

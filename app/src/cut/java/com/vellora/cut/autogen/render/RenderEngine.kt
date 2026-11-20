@@ -87,12 +87,12 @@ object RenderEngine {
                 null
             }
         } catch (e: Exception) {
-            onComplete(RenderResult.Failed("Voice-over file open nahi ho saka: ${e.message}", ""))
+            onComplete(RenderResult.Failed("Could not open the voice-over file: ${e.message}", ""))
             return null
         }
 
         if (timeline.isEmpty()) {
-            onComplete(RenderResult.Failed("Timeline mein koi image nahi", ""))
+            onComplete(RenderResult.Failed("No images in the timeline", ""))
             return null
         }
 
@@ -131,7 +131,7 @@ object RenderEngine {
                     val log = completedSession.allLogsAsString ?: ""
                     onComplete(
                         RenderResult.Failed(
-                            "FFmpeg render fail hua (code ${completedSession.returnCode})",
+                            "FFmpeg render failed (code ${completedSession.returnCode})",
                             log.takeLast(4000)
                         )
                     )
@@ -187,7 +187,7 @@ object RenderEngine {
         val args = mutableListOf<String>("-y")
         for (i in 0 until n) {
             val path = requireNotNull(timeline[i].prompt.imagePath) {
-                "Image #${i + 1} (${timeline[i].prompt.label}) ki file path missing hai"
+                "File path is missing for image #${i + 1} (${timeline[i].prompt.label})"
             }
             args += listOf("-loop", "1", "-t", "%.3f".format(inputLengths[i]), "-i", path)
         }
@@ -398,7 +398,7 @@ object RenderEngine {
     // ---- helpers ---------------------------------------------------------------
 
     private fun resolveVoiceOverFile(context: Context, voiceOverUri: String?, workDir: File): File {
-        requireNotNull(voiceOverUri) { "Project mein voice-over set nahi hai" }
+        requireNotNull(voiceOverUri) { "No voice-over is set in the project" }
         val uri = Uri.parse(voiceOverUri)
 
         if (uri.scheme == null || uri.scheme == "file") {
@@ -408,7 +408,7 @@ object RenderEngine {
         val extension = guessAudioExtension(context, uri)
         val dest = File(workDir, "voiceover.$extension")
         context.contentResolver.openInputStream(uri).use { input ->
-            requireNotNull(input) { "Voice-over URI khol nahi saka" }
+            requireNotNull(input) { "Could not open the voice-over URI" }
             FileOutputStream(dest).use { output -> input.copyTo(output) }
         }
         return dest

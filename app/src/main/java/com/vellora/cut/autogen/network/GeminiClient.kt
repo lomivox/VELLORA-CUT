@@ -60,7 +60,7 @@ class GeminiClient {
                 "generationConfig",
                 JSONObject()
                     .put("temperature", 0.7)
-                    .put("maxOutputTokens", 8192)
+                    .put("maxOutputTokens", 4096)
                     // No hidden "thinking" tokens eating the output budget.
                     .put("thinkingConfig", JSONObject().put("thinkingBudget", 0))
             )
@@ -84,13 +84,13 @@ class GeminiClient {
                 }
                 val json = JSONObject(text)
                 val candidate = json.optJSONArray("candidates")?.optJSONObject(0)
-                    ?: throw GeminiApiException("Gemini ne jawab nahi diya (blocked ya khaali)")
+                    ?: throw GeminiApiException("Gemini gave no answer (blocked or empty)")
                 val outParts = candidate.optJSONObject("content")?.optJSONArray("parts")
                 val sb = StringBuilder()
                 if (outParts != null) {
                     for (i in 0 until outParts.length()) sb.append(outParts.optJSONObject(i)?.optString("text").orEmpty())
                 }
-                return sb.toString().trim().ifBlank { throw GeminiApiException("Gemini ka jawab khaali aaya") }
+                return sb.toString().trim().ifBlank { throw GeminiApiException("Gemini's answer was empty") }
             }
         } catch (e: GeminiApiException) {
             throw e

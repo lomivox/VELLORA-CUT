@@ -23,7 +23,7 @@ import com.vellora.cut.R
  * locking or the app going to background — silently cutting off whatever
  * FFmpeg render or network call was mid-flight, with no crash and no
  * error surfaced (the process is just gone). That's the actual cause of
- * "screen band ho ya app background jaye to kaam ruk jata hai".
+ * "work stops if the screen turns off or the app goes to the background".
  *
  * Starting this service right before that work begins, and stopping it
  * right after (success OR failure), tells Android "this process is doing
@@ -35,7 +35,7 @@ class RenderKeepAliveService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val label = intent?.getStringExtra(EXTRA_LABEL) ?: "Kaam ho raha hai…"
+        val label = intent?.getStringExtra(EXTRA_LABEL) ?: "Working…"
         startForeground(NOTIFICATION_ID, buildNotification(label))
         // If the system still kills us under extreme memory pressure,
         // don't auto-restart into a re-created service with no task to

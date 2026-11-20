@@ -41,10 +41,10 @@ object YouTubeUploader {
     ): Result<YouTubeUploadResult> {
         return try {
             val uploadUrl = initSession(accessToken, videoFile, title, description, tags, privacyStatus)
-                ?: return Result.failure(Exception("Upload session shuru nahi ho saki"))
+                ?: return Result.failure(Exception("Could not start the upload session"))
 
             val videoId = putVideoBytes(uploadUrl, videoFile)
-                ?: return Result.failure(Exception("Video upload fail ho gaya"))
+                ?: return Result.failure(Exception("Video upload failed"))
 
             if (thumbnailFile != null && thumbnailFile.exists()) {
                 // Thumbnail failure shouldn't fail the whole upload — the
@@ -61,7 +61,7 @@ object YouTubeUploader {
     }
 
     /** Thrown when the person cancelled (or the work was stopped) in the middle of an upload. */
-    class UploadCancelledException : IOException("Upload cancel ho gayi")
+    class UploadCancelledException : IOException("Upload cancelled")
 
     /** Where an interrupted upload can continue from (so a retry / app restart does not start from zero). */
     interface SessionStore {
@@ -98,7 +98,7 @@ object YouTubeUploader {
     ): Result<YouTubeUploadResult> {
         return try {
             val total = videoFile.length()
-            if (total <= 0L) return Result.failure(Exception("Video file khali hai"))
+            if (total <= 0L) return Result.failure(Exception("The video file is empty"))
 
             var sessionUrl = sessions.load()
             var offset = 0L
@@ -113,7 +113,7 @@ object YouTubeUploader {
             if (sessionUrl == null) {
                 val token = tokenProvider()
                 sessionUrl = initSession(token, videoFile, title, description, tags, privacyStatus)
-                    ?: return Result.failure(Exception("Upload session shuru nahi ho saki (YouTube ne mana kar diya)"))
+                    ?: return Result.failure(Exception("Could not start the upload session (YouTube refused)"))
                 sessions.save(sessionUrl)
                 offset = 0L
             }
@@ -136,7 +136,7 @@ object YouTubeUploader {
                     else -> {
                         failures++
                         if (failures > MAX_FAILURES_IN_A_ROW) {
-                            return Result.failure(IOException("Internet ka masla — upload ruk gayi (jahan tak hui wahan se dobara chalegi)"))
+                            return Result.failure(IOException("Network problem — the upload stopped (it will resume from where it got to)"))
                         }
                         sleepCancellable(minOf(60_000L, 2_000L shl failures), isCancelled)
                         val status = try { queryStatus(sessionUrl, total) } catch (e: IOException) { null }
@@ -145,7 +145,7 @@ object YouTubeUploader {
                             is Status.Partial -> offset = status.next
                             is Status.Expired -> {
                                 sessions.clear()
-                                return Result.failure(Exception("Upload ka session khatam ho gaya — dobara koshish karein"))
+                                return Result.failure(Exception("The upload session expired — try again"))
                             }
                             else -> { /* still offline — loop and try again */ }
                         }
@@ -180,7 +180,7 @@ object YouTubeUploader {
             note = try {
                 setThumbnailChecked(tokenProvider(), videoId, thumbnailFile)
             } catch (e: Exception) {
-                "Thumbnail nahi lag saka: ${e.message}"
+                "Thumbnail could not be set: ${e.message}"
             }
         }
         return Result.success(YouTubeUploadResult(videoId, "https://youtube.com/watch?v=$videoId", note))
@@ -242,7 +242,7 @@ object YouTubeUploader {
                     while (sent < length) {
                         if (isCancelled()) throw UploadCancelledException()
                         val n = raf.read(buf, 0, minOf(buf.size.toLong(), length - sent).toInt())
-                        if (n <= 0) throw IOException("Video file parhte waqt khatam ho gayi")
+                        if (n <= 0) throw IOException("The video file ended while reading it")
                         sink.write(buf, 0, n)
                         sent += n
                         onProgress(start + sent, total)
@@ -272,9 +272,9 @@ object YouTubeUploader {
                 JSONObject(r.body?.string().orEmpty()).optJSONObject("error")?.optString("message")
             } catch (e: Exception) { null }
             return when {
-                r.code == 403 -> "Thumbnail ke liye YouTube channel ka phone verification chahiye (youtube.com/verify)"
-                !msg.isNullOrBlank() -> "Thumbnail nahi lag saka: $msg"
-                else -> "Thumbnail nahi lag saka (HTTP ${r.code})"
+                r.code == 403 -> "A custom thumbnail needs phone verification on the YouTube channel (youtube.com/verify)"
+                !msg.isNullOrBlank() -> "Thumbnail could not be set: $msg"
+                else -> "Thumbnail could not be set (HTTP ${r.code})"
             }
         }
     }

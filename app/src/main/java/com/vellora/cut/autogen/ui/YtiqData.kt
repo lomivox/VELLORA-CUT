@@ -39,7 +39,7 @@ class YtiqDashboard {
             val token = when (val t = YouTubeAuthManager.getFreshAccessToken(context, email)) {
                 is YouTubeAuthManager.TokenResult.Success -> t.accessToken
                 is YouTubeAuthManager.TokenResult.NeedsUserAction -> {
-                    fail(email, "Is account ki YouTube permission dobara chahiye — Settings mein Remove kar ke dobara jodein")
+                    fail(email, "This account's YouTube permission is needed again — remove it in Settings and connect it again")
                     return
                 }
                 is YouTubeAuthManager.TokenResult.Error -> {
@@ -175,12 +175,12 @@ fun timeAgo(iso: String): String {
         val t = f.parse(iso.take(19))?.time ?: return ""
         val s = ((System.currentTimeMillis() - t) / 1000).coerceAtLeast(0)
         when {
-            s < 3600 -> "${(s / 60).coerceAtLeast(1)} min pehle"
-            s < 86_400 -> "${s / 3600} ghante pehle"
-            s < 7 * 86_400 -> "${s / 86_400} din pehle"
-            s < 30 * 86_400 -> "${s / (7 * 86_400)} hafte pehle"
-            s < 365 * 86_400 -> "${s / (30 * 86_400)} mahine pehle"
-            else -> "${s / (365 * 86_400)} saal pehle"
+            s < 3600 -> "${(s / 60).coerceAtLeast(1)} min ago"
+            s < 86_400 -> "${s / 3600} hours ago"
+            s < 7 * 86_400 -> "${s / 86_400} days ago"
+            s < 30 * 86_400 -> "${s / (7 * 86_400)} weeks ago"
+            s < 365 * 86_400 -> "${s / (30 * 86_400)} months ago"
+            else -> "${s / (365 * 86_400)} years ago"
         }
     } catch (e: Exception) {
         ""

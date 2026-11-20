@@ -175,7 +175,7 @@ fun YtiqCoachScreen(coach: YtiqCoachState, onSend: (String) -> Unit) {
     LaunchedEffect(coach.msgs.size, coach.busy) {
         listState.animateScrollToItem(coach.msgs.size)
     }
-    val suggestions = listOf("Mere views kyun kam hen?", "Agli video ka idea do", "Title behtar karo", "Description likho")
+    val suggestions = listOf("Why are my views low?", "Give me the next video idea", "Improve my title", "Description likho")
 
     Column(modifier = Modifier.fillMaxSize().imePadding()) {
         LazyColumn(
@@ -206,7 +206,7 @@ fun YtiqCoachScreen(coach: YtiqCoachState, onSend: (String) -> Unit) {
                     }
                 }
             }
-            item { if (coach.busy) YqBusy("Coach soch raha hai…") else Spacer(modifier = Modifier.height(1.dp)) }
+            item { if (coach.busy) YqBusy("Coach is thinking…") else Spacer(modifier = Modifier.height(1.dp)) }
         }
         Row(
             modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
@@ -277,10 +277,10 @@ fun YtiqThumbnailScreen(thumbs: SnapshotStateList<Bitmap>) {
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        YqNote("Thumbnail ka idea likhein, AI tasveer banayega.")
+        YqNote("Describe the thumbnail idea and AI will create the picture.")
         YqInput(value = idea, onChange = { idea = it }, hint = "Describe your thumbnail idea", modifier = Modifier.fillMaxWidth(), onSend = { generate() })
-        YqButton(if (busy) "Ban rahi hai…" else "Create", enabled = !busy && idea.isNotBlank()) { generate() }
-        if (busy) YqBusy("Image ban rahi hai, thora intezar karen…")
+        YqButton(if (busy) "Generating…" else "Create", enabled = !busy && idea.isNotBlank()) { generate() }
+        if (busy) YqBusy("Generating the image, please wait…")
         error?.let { Text(text = it, color = YqRed, fontSize = 14.sp) }
         thumbs.forEach { bmp ->
             YqCard {
@@ -295,7 +295,7 @@ fun YtiqThumbnailScreen(thumbs: SnapshotStateList<Bitmap>) {
                     val ok = yqSaveBitmap(context, bmp)
                     Toast.makeText(
                         context,
-                        if (ok) "Gallery (Pictures/YTIQ) mein save ho gayi" else "Save nahi hui (Android 10+ chahiye)",
+                        if (ok) "Saved to Gallery (Pictures/YTIQ)" else "Could not save (needs Android 10+)",
                         Toast.LENGTH_SHORT
                     ).show()
                 }
@@ -385,8 +385,8 @@ fun YtiqResearchScreen(
             ranked = r?.rankedKeywords.orEmpty().take(15)
             titles = r?.competitorTitles.orEmpty().take(10)
             note = when {
-                key.isBlank() -> "Competitor data ke liye Settings mein YouTube API Key lagayen."
-                r == null -> "Competitor data nahi mila (key ya internet check karen)."
+                key.isBlank() -> "Add a YouTube API Key in Settings for competitor data."
+                r == null -> "Competitor data not found (check the key or your internet)."
                 else -> null
             }
             if (competitorsMode && key.isNotBlank()) {
@@ -468,20 +468,20 @@ fun YtiqResearchScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         YqNote(
-            if (competitorsMode) "Topic likhein, dekhein abhi kaun si videos rank kar rahi hen."
-            else "Keyword ya topic likhein, asal YouTube search suggestions milengi."
+            if (competitorsMode) "Write a topic and see which videos are ranking right now."
+            else "Write a keyword or topic to get real YouTube search suggestions."
         )
         if (autoQuery.isNotBlank() && seed == autoQuery) {
             val p = profile
             YqNote(
-                (if (p != null && p.niche.isNotBlank()) "Aap ke channel ka topic: ${p.niche}\n" else "") +
-                    "Aap ke channel ki videos dekh kar khud ye phrases chune gaye: " + autoQueries.joinToString("  •  ") +
-                    "\nBadal kar apna search bhi kar sakte hain — wo bhi aap ke channel ki zaban/mulk ke hisaab se chalega."
+                (if (p != null && p.niche.isNotBlank()) "Your channel's topic: ${p.niche}\n" else "") +
+                    "These phrases were picked automatically from your channel's videos: " + autoQueries.joinToString("  •  ") +
+                    "\nYou can change them and search yourself — it will also follow your channel's language/country."
             )
         }
         YqInput(value = seed, onChange = { seed = it }, hint = "Search keywords…", modifier = Modifier.fillMaxWidth(), onSend = { search() })
-        YqButton(if (busy) "Dhoond raha hai…" else "Search", enabled = !busy && seed.isNotBlank()) { search() }
-        if (busy) YqBusy("Data aa raha hai…")
+        YqButton(if (busy) "Searching…" else "Search", enabled = !busy && seed.isNotBlank()) { search() }
+        if (busy) YqBusy("Fetching data…")
         note?.let { YqNote(it) }
 
         if (searched) {
@@ -489,32 +489,32 @@ fun YtiqResearchScreen(
                 viralNote?.let { YqNote(it) }
                 if (viral.isNotEmpty()) {
                     YqCard {
-                        YqTitle("🔥 Viral videos (pichle 30 din)")
-                        YqNote("Score = views ÷ channel ke subscribers. 5x ka matlab: video ko channel ke subscribers se 5 guna zyada views mile. Video par tap = app mein chalaye, 🤖 = AI us ka andaaz seekh kar aap ke liye title banaye.")
+                        YqTitle("🔥 Viral videos (last 30 days)")
+                        YqNote("Score = views ÷ channel subscribers. 5x means the video got 5 times more views than the channel's subscribers. Tap a video = play it in the app, 🤖 = AI learns its style and writes titles for you.")
                         viral.forEach { v ->
                             ViralRow(
                                 v = v,
                                 onPlay = { onPlay(v.id, v.title) },
-                                onAsk = { onAsk("Ye video is topic par viral hai: \"${v.title}\". Is ke title ka andaaz (shuru ke lafz, sawal ya number) samjha kar mere channel ke liye isi andaaz mein, lekin apne alfaz mein, 3 title do. Is channel ka naam use mat karna.") }
+                                onAsk = { onAsk("This video is viral on this topic: \"${v.title}\". Explain its title style (opening words, question or number) and give me 3 titles for my channel in the same style, but in your own words. Do not use this channel's name.") }
                             )
                         }
                     }
                 }
                 if (viral.isNotEmpty()) {
-                    YqButton("💡 In videos se mere channel ke liye 5 idea") {
+                    YqButton("💡 5 ideas for my channel from these videos") {
                         onAsk(
-                            "Mere channel ke haal ke titles:\n" + ownTitles.take(8).joinToString("\n") { "- $it" } +
-                                "\n\nIs topic par abhi ye videos viral hain:\n" + viral.take(6).joinToString("\n") { "- ${it.title}" } +
-                                "\n\nIn viral videos ke asal pehlu (angle) samajh kar mere channel ke liye 5 nayi video ideas do. " +
-                                "Har idea ka title aur ek line mein wajah ke ye kyun chalegi. Kisi competitor ka title ya channel ka naam copy mat karna."
+                            "My channel's recent titles:\n" + ownTitles.take(8).joinToString("\n") { "- $it" } +
+                                "\n\nThese videos are viral on this topic right now:\n" + viral.take(6).joinToString("\n") { "- ${it.title}" } +
+                                "\n\nUnderstand the real angles of these viral videos and give me 5 new video ideas for my channel. " +
+                                "For each idea give a title and a one-line reason why it will work. Do not copy any competitor's title or channel name."
                         )
                     }
                 }
                 channelsNote?.let { YqNote(it) }
                 if (bigChannels.isNotEmpty()) {
                     YqCard {
-                        YqTitle("📺 Aap jaise competitor channels")
-                        YqNote("Pehle wo channels jo aap ke size ke qareeb hain, phir bade. Tap = channel kholein.")
+                        YqTitle("📺 Competitor channels like yours")
+                        YqNote("Channels closest to your size first, then bigger ones. Tap = open the channel.")
                         bigChannels.forEach { c ->
                             ChannelRow(c, ownSubscribers) {
                                 try {
@@ -532,30 +532,30 @@ fun YtiqResearchScreen(
             }
             if (competitorsMode && titles.isNotEmpty()) {
                 YqCard {
-                    YqTitle("Top videos (abhi rank par)")
-                    titles.forEach { t -> YqRowItem(t) { onAsk("Is competitor video ka title dekh kar mere channel ke liye behtar title do: $t") } }
+                    YqTitle("Top videos (ranking now)")
+                    titles.forEach { t -> YqRowItem(t) { onAsk("Look at this competitor video's title and give me a better title for my channel: $t") } }
                 }
             }
             if (ranked.isNotEmpty()) {
                 YqCard {
-                    YqTitle("Top keywords (competitors ke tags)")
-                    ranked.forEach { k -> YqRowItem(k) { onAsk("'$k' keyword par mere channel ke liye 3 video ideas aur title do") } }
+                    YqTitle("Top keywords (competitors' tags)")
+                    ranked.forEach { k -> YqRowItem(k) { onAsk("Give me 3 video ideas and titles for my channel on the keyword '$k'") } }
                 }
             }
             if (!competitorsMode || (titles.isEmpty() && ranked.isEmpty())) {
                 YqCard {
                     YqTitle("YouTube search suggestions")
-                    if (suggestions.isEmpty()) YqNote("Koi suggestion nahi mili.")
-                    suggestions.forEach { k -> YqRowItem(k) { onAsk("'$k' keyword par mere channel ke liye 3 video ideas aur title do") } }
+                    if (suggestions.isEmpty()) YqNote("No suggestions found.")
+                    suggestions.forEach { k -> YqRowItem(k) { onAsk("Give me 3 video ideas and titles for my channel on the keyword '$k'") } }
                 }
             }
             if (!competitorsMode && titles.isNotEmpty()) {
                 YqCard {
-                    YqTitle("Top videos (abhi rank par)")
-                    titles.forEach { t -> YqRowItem(t) { onAsk("Is competitor video ka title dekh kar mere channel ke liye behtar title do: $t") } }
+                    YqTitle("Top videos (ranking now)")
+                    titles.forEach { t -> YqRowItem(t) { onAsk("Look at this competitor video's title and give me a better title for my channel: $t") } }
                 }
             }
-            YqNote("Kisi bhi line par tap karen to AI Coach us par salah dega.")
+            YqNote("Tap any line and the AI Coach will advise you on it.")
         }
         Spacer(modifier = Modifier.height(8.dp))
     }
@@ -592,7 +592,7 @@ private fun ChannelRow(c: YouTubeViralResearch.BigChannel, ownSubs: Long?, onOpe
         Text(text = c.title, color = YtText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         val ratio = if (ownSubs != null && ownSubs > 0) {
             val r = c.subscribers.toDouble() / ownSubs.toDouble()
-            " • aap se " + (if (r >= 10) r.toInt().toString() else String.format(java.util.Locale.US, "%.1f", r)) + " guna"
+            " • " + (if (r >= 10) r.toInt().toString() else String.format(java.util.Locale.US, "%.1f", r)) + "x yours"
         } else ""
         Text(text = "${formatCount(c.subscribers)} subscribers$ratio", color = YtMuted, fontSize = 11.sp)
     }
@@ -624,12 +624,12 @@ fun YtiqOptimizeScreen(
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                YqButton("Naya video: Title, Tags aur Upload", modifier = Modifier.fillMaxWidth()) { onOpenCreate() }
-                YqNote("Title score ek andaza hai (length, number, punctuation). Ye YouTube ka official score nahi.")
-                if (dash.loading && dash.videos.isEmpty()) YqBusy("Videos aa rahi hen…")
+                YqButton("New video: Title, Tags and Upload", modifier = Modifier.fillMaxWidth()) { onOpenCreate() }
+                YqNote("The title score is an estimate (length, number, punctuation). It is not YouTube's official score.")
+                if (dash.loading && dash.videos.isEmpty()) YqBusy("Loading videos…")
                 dash.error?.let { Text(text = it, color = YqRed, fontSize = 14.sp) }
                 if (!dash.loading && dash.videos.isEmpty() && dash.error == null) {
-                    YqNote("Videos dekhne ke liye pehle menu mein Account Settings se YouTube channel jodein.")
+                    YqNote("To see videos, first connect a YouTube channel from Account Settings in the menu.")
                 }
             }
         }
@@ -658,9 +658,9 @@ fun YtiqOptimizeScreen(
                     modifier = Modifier.horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    YqChip("Title behtar karo") { onAsk("Is video ka title behtar karo, 5 options do (Roman Urdu ya Urdu title): " + v.title) }
-                    YqChip("Description likho") { onAsk("Is video ki description likho jis mein keywords aur subscribe ki line ho: " + v.title) }
-                    YqChip("Tags do") { onAsk("Is video ke liye 15 tags aur 5 hashtags do: " + v.title) }
+                    YqChip("Improve my title") { onAsk("Improve this video's title and give 5 options (in the same language as the current title): " + v.title) }
+                    YqChip("Description likho") { onAsk("Write a description for this video that includes keywords and a subscribe line: " + v.title) }
+                    YqChip("Give tags") { onAsk("Give 15 tags and 5 hashtags for this video: " + v.title) }
                 }
             }
         }
@@ -677,8 +677,8 @@ fun YtiqSubscribersScreen(dash: YtiqDashboard, onAsk: (String) -> Unit) {
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         if (ch == null) {
-            if (dash.loading) YqBusy("Channel ka data aa raha hai…")
-            else YqNote("Channel data nahi hai. Menu mein Account Settings se YouTube channel jodein.")
+            if (dash.loading) YqBusy("Loading channel data…")
+            else YqNote("No channel data. Connect a YouTube channel from Account Settings in the menu.")
             return@Column
         }
         YqCard {
@@ -716,15 +716,15 @@ fun YtiqSubscribersScreen(dash: YtiqDashboard, onAsk: (String) -> Unit) {
                 Spacer(modifier = Modifier.height(8.dp))
                 YqNote("Average views: ${formatCount(avg)}")
                 YqNote("Likes / views: " + String.format(java.util.Locale.US, "%.1f", rate) + "%")
-                if (best != null) YqNote("Sab se achi: ${best.title} (${formatCount(best.views)})")
+                if (best != null) YqNote("Best: ${best.title} (${formatCount(best.views)})")
                 computePerformance(vids)?.let {
                     val sign = if (it.percent >= 0) "+" else ""
-                    YqNote("Latest video apne aam views se $sign${it.percent}% (rank ${it.rank}/${it.outOf})")
+                    YqNote("Latest video is $sign${it.percent}% vs your average views (rank ${it.rank}/${it.outOf})")
                 }
             }
         }
         YqButton("Subscribers kaise barhayen? (AI Coach)", modifier = Modifier.fillMaxWidth()) {
-            onAsk("Mere channel ke data ko dekh kar batao subscribers kaise barhayen, 5 amli qadam do")
+            onAsk("Look at my channel's data and tell me how to grow subscribers, with 5 practical steps")
         }
         Spacer(modifier = Modifier.height(8.dp))
     }
@@ -750,7 +750,7 @@ fun YtiqAiToolScreen(dash: YtiqDashboard, intro: String, actions: List<YtiqAiAct
             output = ""
             output = when (val r = YtiqAi.text(context, ytiqToolPrompt(a.task, dash.channel, dash.videos))) {
                 is YtiqAiResult.Ok -> r.text
-                is YtiqAiResult.Fail -> "Masla: " + r.message
+                is YtiqAiResult.Fail -> "Problem: " + r.message
             }
             busy = false
         }
@@ -762,7 +762,7 @@ fun YtiqAiToolScreen(dash: YtiqDashboard, intro: String, actions: List<YtiqAiAct
     ) {
         YqNote(intro)
         actions.forEach { a -> YqButton(a.label, modifier = Modifier.fillMaxWidth(), enabled = !busy) { run(a) } }
-        if (busy) YqBusy("AI jawab bana raha hai…")
+        if (busy) YqBusy("AI is writing the answer…")
         if (output.isNotEmpty()) {
             YqCard {
                 YqTitle(shown)
@@ -775,21 +775,21 @@ fun YtiqAiToolScreen(dash: YtiqDashboard, intro: String, actions: List<YtiqAiAct
 }
 
 val YtiqDailyActions = listOf(
-    YtiqAiAction("Aaj ke 5 video ideas", "Is channel ke liye 5 naye video ideas do. Har idea ke saath ek catchy title aur ek line mein wajah likho."),
-    YtiqAiAction("5 Shorts ke ideas", "Is channel ke liye 5 Shorts (30 second) ke ideas do, har ek ka hook pehli line mein likho."),
-    YtiqAiAction("Best video jaisa naya idea", "Haal ki sab se zyada views wali video jaisa ek naya idea do aur batao wo kyun chalega.")
+    YtiqAiAction("5 video ideas for today", "Give 5 new video ideas for this channel. For each idea write a catchy title and a one-line reason."),
+    YtiqAiAction("5 Shorts ideas", "Give 5 Shorts (30-second) ideas for this channel, with the hook in the first line of each."),
+    YtiqAiAction("A new idea like my best video", "Give one new idea like my most-viewed recent video and explain why it will work.")
 )
 
 val YtiqLearnActions = listOf(
-    YtiqAiAction("Pehle 15 second ka hook", "Mere channel ke topics ke hisab se pehle 15 second ka mazboot hook likhne ke 5 tareeqe misal ke saath batao."),
-    YtiqAiAction("Title aur thumbnail ka jorr", "Mere channel ki videos ke titles dekh kar batao title aur thumbnail ko kaise milana chahiye, 5 amli tips do."),
-    YtiqAiAction("Shorts se subscribers", "Shorts se subscribers aur long videos tak views laane ka plan batao, mere channel ke data ke hisab se."),
-    YtiqAiAction("Meri channel ki sab se badi ghalti", "Mere channel ke data ko dekh kar 3 sab se badi kamzoriyan batao aur har ek ka hal likho.")
+    YtiqAiAction("The first 15-second hook", "Based on my channel's topics, give 5 ways to write a strong first 15-second hook, with examples."),
+    YtiqAiAction("Title and thumbnail match", "Look at my channel's video titles and tell me how to match the title with the thumbnail, with 5 practical tips."),
+    YtiqAiAction("Subscribers from Shorts", "Give a plan to gain subscribers from Shorts and bring views to long videos, based on my channel's data."),
+    YtiqAiAction("My channel's biggest mistake", "Look at my channel's data and name the 3 biggest weaknesses, with a fix for each.")
 )
 
 val YtiqGenerateActions = listOf(
-    YtiqAiAction("10 video ideas", "Mere channel ke liye 10 video ideas generate karo, har ek ke saath title do."),
-    YtiqAiAction("Shorts script (30 sec)", "Mere channel ke topic par 30 second ki Shorts ki poori script likho: hook, beech ka hissa, aakhri line."),
-    YtiqAiAction("Hashtags aur tags", "Mere channel ke liye 20 tags aur 8 hashtags generate karo."),
-    YtiqAiAction("Description template", "Mere channel ke liye ek description template likho jis mein keywords, subscribe ki line aur hashtags hon.")
+    YtiqAiAction("10 video ideas", "Generate 10 video ideas for my channel, with a title for each."),
+    YtiqAiAction("Shorts script (30 sec)", "Write a full 30-second Shorts script on my channel's topic: hook, middle part, closing line."),
+    YtiqAiAction("Hashtags and tags", "Generate 20 tags and 8 hashtags for my channel."),
+    YtiqAiAction("Description template", "Write a description template for my channel with keywords, a subscribe line and hashtags.")
 )

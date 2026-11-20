@@ -49,13 +49,12 @@ object YouTubeVideoManager {
         val reason = err?.optJSONArray("errors")?.optJSONObject(0)?.optString("reason").orEmpty()
         val msg = err?.optString("message").orEmpty()
         return when {
-            reason.contains("quota", ignoreCase = true) -> "YouTube API ka aaj ka quota khatam ho gaya — kal dobara try karein"
-            r.code == 401 -> "Login ki muddat khatam — Settings mein is channel ko Remove kar ke dobara jodein"
+            reason.contains("quota", ignoreCase = true) -> "YouTube daily quota used up — resets about 12–1 PM Pakistan time"
+            r.code == 401 -> "Login expired — remove this channel in Settings and connect it again"
             reason.equals("insufficientPermissions", ignoreCase = true) || msg.contains("insufficient", ignoreCase = true) ->
-                "Edit/Delete ki ijazat nahi mili. Settings mein is channel ko Remove kar ke dobara jodein (nayi ijazat maangi jayegi)"
-            reason.equals("forbidden", ignoreCase = true) -> "Is video ko badalne ki ijazat nahi (YouTube ne mana kiya)"
-            msg.isNotBlank() -> "YouTube: $msg"
-            else -> "YouTube error ${r.code}"
+                "Edit/Delete permission was not granted. Remove this channel in Settings and connect it again (it will ask for the new permission)"
+            reason.equals("forbidden", ignoreCase = true) -> "No permission to change this video (YouTube refused)"
+            else -> YouTubeErrors.describe(r.code, r.body)
         }
     }
 
@@ -115,9 +114,9 @@ object YouTubeVideoManager {
                 // keep the playlist order (newest first)
                 YtResult.Ok(ids.distinct().mapNotNull { byId[it] })
             } catch (e: java.io.IOException) {
-                YtResult.Fail("Internet nahi mila")
+                YtResult.Fail("No internet connection")
             } catch (e: Exception) {
-                YtResult.Fail(e.message ?: "Videos nahi mil sakin")
+                YtResult.Fail(e.message ?: "Could not load the videos")
             }
         }
 
@@ -132,12 +131,12 @@ object YouTubeVideoManager {
 
     /** Checks YouTube's own limits before anything is sent. Returns an error text or null when everything is fine. */
     fun validate(title: String, description: String, tags: List<String>): String? {
-        if (title.isBlank()) return "Title khali nahi ho sakta"
-        if (title.length > 100) return "Title 100 huroof se zyada nahi ho sakta (abhi ${title.length})"
-        if (title.contains('<') || title.contains('>')) return "Title mein < ya > nahi ho sakta"
-        if (description.toByteArray(Charsets.UTF_8).size > 5000) return "Description bohat lambi hai (YouTube ki hadd 5000 bytes — Urdu mein lagbhag 2500 huroof)"
-        if (description.contains('<') || description.contains('>')) return "Description mein < ya > nahi ho sakta"
-        if (tags.joinToString(",").length > 500) return "Tags 500 huroof se zyada nahi ho sakte"
+        if (title.isBlank()) return "Title cannot be empty"
+        if (title.length > 100) return "Title cannot exceed 100 characters (now ${title.length})"
+        if (title.contains('<') || title.contains('>')) return "Title cannot contain < or >"
+        if (description.toByteArray(Charsets.UTF_8).size > 5000) return "Description is too long (YouTube's limit is 5000 bytes — about 2500 characters in Urdu)"
+        if (description.contains('<') || description.contains('>')) return "Description cannot contain < or >"
+        if (tags.joinToString(",").length > 500) return "Tags cannot exceed 500 characters"
         return null
     }
 
@@ -165,9 +164,9 @@ object YouTubeVideoManager {
             if (r.code !in 200..299) YtResult.Fail(errorMessage(r))
             else YtResult.Ok(video.copy(title = newTitle, description = newDescription, tags = newTags))
         } catch (e: java.io.IOException) {
-            YtResult.Fail("Internet nahi mila")
+            YtResult.Fail("No internet connection")
         } catch (e: Exception) {
-            YtResult.Fail(e.message ?: "Video save nahi ho saki")
+            YtResult.Fail(e.message ?: "Could not save the video")
         }
     }
 
@@ -180,9 +179,9 @@ object YouTubeVideoManager {
             )
             if (r.code in 200..299) YtResult.Ok(Unit) else YtResult.Fail(errorMessage(r))
         } catch (e: java.io.IOException) {
-            YtResult.Fail("Internet nahi mila")
+            YtResult.Fail("No internet connection")
         } catch (e: Exception) {
-            YtResult.Fail(e.message ?: "Video delete nahi ho saki")
+            YtResult.Fail(e.message ?: "Could not delete the video")
         }
     }
 }

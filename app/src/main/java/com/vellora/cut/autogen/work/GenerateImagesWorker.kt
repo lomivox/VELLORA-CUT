@@ -39,7 +39,7 @@ class GenerateImagesWorker(
         val accounts = credentials.accounts
         if (accounts.isEmpty()) {
             return@withContext Result.failure(
-                workDataOf(KEY_ERROR to "Koi Cloudflare account save nahi hai — pehle Settings mein add karein")
+                workDataOf(KEY_ERROR to "No Cloudflare account saved — add one in Settings first")
             )
         }
 
@@ -72,7 +72,7 @@ class GenerateImagesWorker(
             var lastError: String? = null
 
             if (usableAccounts.isEmpty()) {
-                lastError = "Sab ${accounts.size} accounts ka aaj ka quota khatam ho chuka hai"
+                lastError = "All ${accounts.size} accounts' daily quotas are used up"
             } else {
                 for (account in usableAccounts) {
                     try {

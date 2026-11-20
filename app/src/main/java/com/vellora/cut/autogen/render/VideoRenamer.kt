@@ -14,7 +14,7 @@ import java.io.File
  */
 object VideoRenamer {
 
-    /** "5 Tips: Ghar par Workout!" -> "5-Tips-Ghar-par-Workout". Letters of any language (Urdu too) are kept. Null when nothing usable is left. */
+    /** "5 Tips: Workout at Home!" -> "5-Tips-Ghar-par-Workout". Letters of any language (Urdu too) are kept. Null when nothing usable is left. */
     fun fileNameFromTitle(title: String): String? {
         val cleaned = buildString {
             title.forEach { ch ->

@@ -73,7 +73,7 @@ object YouTubeAuthManager {
      * background dispatcher, which this already does internally. */
     suspend fun getFreshAccessToken(context: Context, account: GoogleSignInAccount): TokenResult {
         val email = account.email
-            ?: return TokenResult.Error("Account handle missing — dobara sign-in karein")
+            ?: return TokenResult.Error("Account handle missing — sign in again")
         return getFreshAccessToken(context, email)
     }
 
@@ -101,10 +101,10 @@ object YouTubeAuthManager {
                 if (consentIntent != null) {
                     TokenResult.NeedsUserAction(consentIntent)
                 } else {
-                    TokenResult.Error(e.message ?: "Consent screen nahi mil saka")
+                    TokenResult.Error(e.message ?: "Could not get the consent screen")
                 }
             } catch (e: Exception) {
-                TokenResult.Error(e.message ?: "Token nahi mil saka")
+                TokenResult.Error(e.message ?: "Could not get a token")
             }
         }
 

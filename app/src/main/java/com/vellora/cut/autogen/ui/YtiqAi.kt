@@ -39,9 +39,9 @@ object YtiqAi {
         val accounts = try { store?.accounts.orEmpty() } catch (e: Exception) { emptyList() }
         val geminiKeys = try { store?.geminiKeys.orEmpty() } catch (e: Exception) { emptyList() }
         if (accounts.isEmpty() && geminiKeys.isEmpty()) {
-            return@withContext YtiqAiResult.Fail("Pehle Settings mein Gemini key ya Cloudflare account jodein")
+            return@withContext YtiqAiResult.Fail("First add a Gemini key or a Cloudflare account in Settings")
         }
-        var last = "AI jawab nahi de saka"
+        var last = "The AI could not answer"
         // Gemini first: every key gets 2 real tries before the next key; Cloudflare accounts are the backup.
         if (geminiKeys.isNotEmpty()) {
             val gemini = GeminiClient()
@@ -75,20 +75,20 @@ object YtiqAi {
         val store = try {
             SecureCredentialStore(context.applicationContext)
         } catch (e: Exception) {
-            return@withContext Pair(null, "Secure storage nahi khuli")
+            return@withContext Pair(null, "Secure storage could not be opened")
         }
         val accounts = store.accounts
         if (accounts.isEmpty()) {
-            return@withContext Pair(null, "Pehle Settings mein Cloudflare account jodein")
+            return@withContext Pair(null, "First add a Cloudflare account in Settings")
         }
         val model = store.imageModel
-        var last = "Image nahi bani"
+        var last = "Image was not generated"
         for (a in accounts) {
             try {
                 val bytes = client.generateImage(prompt, a.accountId, a.apiToken, model)
                 val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
                 if (bmp != null) return@withContext Pair(bmp, null)
-                last = "Image decode nahi hui"
+                last = "Image could not be decoded"
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -101,7 +101,7 @@ object YtiqAi {
 
 /** The real channel numbers, written as text, so the AI answers from facts and not guesses. */
 fun ytiqChannelContext(channel: YtChannel?, videos: List<YtVideo>): String {
-    if (channel == null) return "Channel ka data abhi available nahi hai."
+    if (channel == null) return "Channel data is not available yet."
     val subs = if (channel.subsHidden) "hidden" else formatCount(channel.subscribers)
     val sb = StringBuilder()
     sb.append("Channel: ").append(channel.title).append("\n")
@@ -109,15 +109,15 @@ fun ytiqChannelContext(channel: YtChannel?, videos: List<YtVideo>): String {
     sb.append(", Total views: ").append(formatCount(channel.views))
     sb.append(", Videos: ").append(channel.videoCount).append("\n")
     if (videos.isNotEmpty()) {
-        sb.append("Haal ki videos (title - views):\n")
+        sb.append("Recent videos (title - views):\n")
         videos.take(10).forEach { sb.append("- ").append(it.title).append(" - ").append(formatCount(it.views)).append("\n") }
     }
     return sb.toString()
 }
 
 fun ytiqToolPrompt(task: String, channel: YtChannel?, videos: List<YtVideo>): String =
-    "Tum ek YouTube growth expert ho. Jawab sirf Roman Urdu mein do, amli aur mukhtasar. " +
-        "Sirf neeche diye gaye data par mabni salah do.\n\n" +
+    "You are a YouTube growth expert. Answer in English only, practical and brief. " +
+        "Give advice based only on the data below.\n\n" +
         ytiqChannelContext(channel, videos) + "\nKaam: " + task
 
 /** Rough title quality guess (length, number, punctuation, shouting). Not a YouTube number. */
@@ -155,7 +155,7 @@ class YtiqCoachState {
         msgs.add(
             YtiqCoachMsg(
                 false,
-                "Assalam o Alaikum! Main aapka channel coach hun. Title, tags, ideas ya views ke bare mein poochiye."
+                "Hello! I'm your channel coach. Ask me about titles, tags, ideas or views."
             )
         )
     }
@@ -168,15 +168,15 @@ class YtiqCoachState {
         try {
             val history = msgs.dropLast(1).takeLast(6)
                 .joinToString("\n") { (if (it.fromUser) "User: " else "Coach: ") + it.text.take(500) }
-            val prompt = "Tum ek mehrbaan YouTube growth coach ho. Jawab sirf Roman Urdu mein do, seedha aur amli, " +
-                "zyada se zyada 8 chhoti lines ya bullets. Sirf neeche diye data par mabni salah do; " +
-                "jo data nahi hai uska andaza mat lagao.\n\n" +
+            val prompt = "You are a friendly YouTube growth coach. Answer in English only, direct and practical, " +
+                "at most 8 short lines or bullets. Give advice based only on the data below; " +
+                "do not guess about data that is not given.\n\n" +
                 ytiqChannelContext(dash.channel, dash.videos) +
                 com.vellora.cut.autogen.network.NicheInsights.coachBlock(context) +
                 "\nPichli baat-cheet:\n" + history + "\n\nUser: " + q + "\nCoach:"
             when (val r = YtiqAi.text(context, prompt)) {
                 is YtiqAiResult.Ok -> msgs.add(YtiqCoachMsg(false, r.text))
-                is YtiqAiResult.Fail -> msgs.add(YtiqCoachMsg(false, "Masla: " + r.message))
+                is YtiqAiResult.Fail -> msgs.add(YtiqCoachMsg(false, "Problem: " + r.message))
             }
         } finally {
             busy = false

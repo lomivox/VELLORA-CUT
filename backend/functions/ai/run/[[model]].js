@@ -20,13 +20,13 @@ export async function onRequestPost({ request, env, params }) {
   if (bad) return bad;
 
   const model = Array.isArray(params.model) ? params.model.join("/") : String(params.model || "");
-  if (!ALLOWED_MODELS.has(model)) return json(400, "Ye model is server par allowed nahi: " + model);
+  if (!ALLOWED_MODELS.has(model)) return json(400, "Model not allowed on this server: " + model);
 
   const accounts = readAccounts(env);
-  if (accounts.length === 0) return json(500, "Server par CF_ACCOUNTS secret khali ya galat hai");
+  if (accounts.length === 0) return json(500, "No Cloudflare accounts are configured on the server");
 
   const payload = await request.text();
-  if (payload.length > MAX_BODY_CHARS) return json(413, "Request bahut bari hai");
+  if (payload.length > MAX_BODY_CHARS) return json(413, "Request too large");
 
   let sawQuota = false;
   let sawBadToken = false;
@@ -60,7 +60,7 @@ export async function onRequestPost({ request, env, params }) {
   }
 
   // Every account failed. 429 + code 4006 is exactly what the app already treats as "quota finished".
-  if (sawQuota) return json(429, "Sab accounts ka aaj ka quota khatam ho chuka hai", { code: 4006 });
-  if (sawBadToken) return json(502, "Server ke Cloudflare accounts ke token galat hain");
-  return json(502, "Cloudflare tak pohanch nahi saka: " + lastNetworkError);
+  if (sawQuota) return json(429, "All accounts' daily quota is used up", { code: 4006 });
+  if (sawBadToken) return json(502, "The server's Cloudflare tokens are invalid");
+  return json(502, "Could not reach Cloudflare: " + lastNetworkError);
 }

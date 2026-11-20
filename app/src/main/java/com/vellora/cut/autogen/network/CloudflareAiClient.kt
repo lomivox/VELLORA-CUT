@@ -75,7 +75,7 @@ class CloudflareAiClient {
             // for THIS account is exhausted for the day.
             if (response.code == 429 || responseBody.contains("\"code\":4006")) {
                 throw CloudflareApiException(
-                    "Is account ka aaj ka quota khatam ho chuka hai",
+                    "This account's daily quota is used up",
                     isQuotaExceeded = true
                 )
             }
@@ -107,7 +107,7 @@ class CloudflareAiClient {
     /**
      * Turns one spoken narration segment (a chunk of the voice-over's own
      * transcript) into a descriptive, professional image-generation prompt
-     * — the core of the "audio se khudkar prompts" pipeline (see
+     * — the core of the "prompts from audio" pipeline (see
      * AutoPromptGenerator). Real Cloudflare text-generation call
      * (llama-3.1-8b), same pooled-account/retry story as
      * [classifyImageEnergy].
@@ -154,7 +154,7 @@ class CloudflareAiClient {
 
             if (response.code == 429 || responseBody.contains("\"code\":4006")) {
                 throw CloudflareApiException(
-                    "Is account ka aaj ka quota khatam ho chuka hai",
+                    "This account's daily quota is used up",
                     isQuotaExceeded = true
                 )
             }
@@ -229,7 +229,7 @@ class CloudflareAiClient {
 
             if (response.code == 429 || responseBody.contains("\"code\":4006")) {
                 throw CloudflareApiException(
-                    "Is account ka aaj ka quota khatam ho chuka hai",
+                    "This account's daily quota is used up",
                     isQuotaExceeded = true
                 )
             }
@@ -304,7 +304,7 @@ class CloudflareAiClient {
 
             if (response.code == 429 || responseBody.contains("\"code\":4006")) {
                 throw CloudflareApiException(
-                    "Is account ka aaj ka quota khatam ho chuka hai",
+                    "This account's daily quota is used up",
                     isQuotaExceeded = true
                 )
             }
@@ -325,7 +325,7 @@ class CloudflareAiClient {
 
             val result = json.optJSONObject("result") ?: throw CloudflareApiException("No result in response")
             val segmentsArray = result.optJSONArray("segments")
-                ?: throw CloudflareApiException("Whisper response mein segments nahi mile")
+                ?: throw CloudflareApiException("No segments found in the Whisper response")
 
             return (0 until segmentsArray.length()).map { i ->
                 val seg = segmentsArray.getJSONObject(i)
@@ -389,7 +389,7 @@ class CloudflareAiClient {
 
             if (response.code == 429 || responseBody.contains("\"code\":4006")) {
                 throw CloudflareApiException(
-                    "Is account ka aaj ka quota khatam ho chuka hai",
+                    "This account's daily quota is used up",
                     isQuotaExceeded = true
                 )
             }
@@ -410,7 +410,7 @@ class CloudflareAiClient {
 
             val result = json.optJSONObject("result") ?: throw CloudflareApiException("No result in response")
             return result.optString("response").ifBlank {
-                throw CloudflareApiException("Khaali response mila")
+                throw CloudflareApiException("Empty response received")
             }
         }
     }

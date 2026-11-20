@@ -50,18 +50,13 @@ object YouTubeChannelApi {
                 if (r.isSuccessful) {
                     YtResult.Ok(JSONObject(body))
                 } else {
-                    val msg = try {
-                        JSONObject(body).optJSONObject("error")?.optString("message")
-                    } catch (e: Exception) {
-                        null
-                    }
-                    YtResult.Fail("YouTube error ${r.code}: ${msg ?: "unknown"}")
+                    YtResult.Fail(YouTubeErrors.describe(r.code, body))
                 }
             }
         } catch (e: IOException) {
-            YtResult.Fail("Internet nahi mila")
+            YtResult.Fail("No internet connection")
         } catch (e: Exception) {
-            YtResult.Fail(e.message ?: "Data parh nahi saka")
+            YtResult.Fail(e.message ?: "Could not read the data")
         }
     }
 
@@ -81,7 +76,7 @@ object YouTubeChannelApi {
             is YtResult.Fail -> r
             is YtResult.Ok -> {
                 val item = r.value.optJSONArray("items")?.optJSONObject(0)
-                    ?: return@withContext YtResult.Fail("Is account par koi YouTube channel nahi mila")
+                    ?: return@withContext YtResult.Fail("No YouTube channel found on this account")
                 val snippet = item.optJSONObject("snippet")
                 val stats = item.optJSONObject("statistics") ?: JSONObject()
                 YtResult.Ok(

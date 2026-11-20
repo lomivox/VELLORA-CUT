@@ -99,11 +99,11 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
     suspend fun uploadToYouTube(entity0: ShortMetadataEntity): ShortMetadataEntity {
         var entity = entity0
         if (entity.videoUri.isBlank()) {
-            return entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = "Is entry ke sath koi video nahi hai (sirf topic se bana tha) — upload nahi ho sakti")
+            return entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = "This entry has no video (it was made from a topic only) — it cannot be uploaded")
         }
         val accountEmail = uploadAccountEmail
             ?: com.vellora.cut.autogen.network.YouTubeAccounts.selectedEmail(context)
-            ?: return entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = "Pehle koi YouTube account connect karein (neeche \"Connect Account\" ya Settings)")
+            ?: return entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = "Connect a YouTube account first (use \"Connect Account\" below, or Settings)")
 
         // Before uploading, rename the video after its generated title (like renaming it in the Gallery),
         // so the file itself says what the video is about. Best-effort: if the phone refuses, upload goes on.
@@ -121,7 +121,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
 
         val videoFile = withContext(Dispatchers.IO) {
             resolveVideoToLocalFile(context, entity.videoUri)
-        } ?: return entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = "Video file nahi mili upload ke liye")
+        } ?: return entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = "Video file not found for upload")
 
         val reshapedFile = if (entity.uploadTarget != com.vellora.cut.autogen.data.UploadTarget.AUTO) {
             val target = if (entity.uploadTarget == com.vellora.cut.autogen.data.UploadTarget.SHORT) {
@@ -167,7 +167,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
         // so it keeps going when the app is closed. Here we only stage the files and start it.
         val stagedVideo = withContext(Dispatchers.IO) {
             com.vellora.cut.autogen.work.UploadStaging.stageVideo(context, uploadFile, entity.id)
-        } ?: return entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = "Video upload ke liye tayyar nahi ho saki (jagah kam ho sakti hai)")
+        } ?: return entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = "Could not prepare the video for upload (storage may be low)")
 
         val stagedThumbnail = thumbnailUri?.let { picked ->
             withContext(Dispatchers.IO) {
@@ -192,7 +192,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
     suspend fun uploadAndSave(entity: ShortMetadataEntity) {
         isWorking = true
         statusText = "uploading"
-        com.vellora.cut.autogen.render.RenderKeepAliveService.start(context, "YouTube par upload ho rahi hai…")
+        com.vellora.cut.autogen.render.RenderKeepAliveService.start(context, "Uploading to YouTube…")
         try {
             var updated = entity.copy(status = ShortMetadataStatus.UPLOADING, errorMessage = null)
             activeProject = updated
@@ -209,7 +209,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
     suspend fun runGenerationFlow(entity: ShortMetadataEntity, videoUriForGen: String?, manualTopic: String?, topicHint: String? = null) {
         val accounts = SecureCredentialStore(context).accounts
         if (accounts.isEmpty() && SecureCredentialStore(context).geminiKeys.isEmpty()) {
-            errorMessage = "Pehle Settings mein Gemini key ya Cloudflare account add karein"
+            errorMessage = "First add a Gemini key or a Cloudflare account in Settings"
             val updated = entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = errorMessage)
             dao.update(updated)
             activeProject = updated
@@ -217,7 +217,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
         }
         isWorking = true
         engineNote = ""
-        com.vellora.cut.autogen.render.RenderKeepAliveService.start(context, "Shorts Metadata ban rahi hai…")
+        com.vellora.cut.autogen.render.RenderKeepAliveService.start(context, "Generating Shorts metadata…")
         try {
             val result = ShortsMetadataGenerator.generate(
                 context = context,
@@ -231,8 +231,8 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
                     if (it == "generating_gemini") engineNote = "✨ Gemini ne likha"
                     else if (it.startsWith("generating_cloudflare")) {
                         val reason = it.substringAfter(":", "").trim()
-                        engineNote = "⚠ Gemini nahi chala" + (if (reason.isNotBlank()) " ($reason)" else "") + " — backup (Cloudflare) ne likha"
-                    } else if (it == "generating") engineNote = "Cloudflare ne likha (Gemini key save nahi hai)"
+                        engineNote = "⚠ Gemini did not work" + (if (reason.isNotBlank()) " ($reason)" else "") + " — backup (Cloudflare) ne likha"
+                    } else if (it == "generating") engineNote = "Cloudflare responded (no Gemini key saved)"
                 }
             )
             isWorking = false
@@ -295,7 +295,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
         if (manualMode) {
             // Manual: the person's own title/description/tags go straight to YouTube — no AI step.
             val title = manualTitle.trim()
-            if (title.isBlank()) { errorMessage = "Pehle apna title likhein"; return@rememberLauncherForActivityResult }
+            if (title.isBlank()) { errorMessage = "Write your title first"; return@rememberLauncherForActivityResult }
             scope.launch {
                 var entity = ShortMetadataEntity(
                     videoUri = uri.toString(),
@@ -360,7 +360,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
 
     fun saveManualDraft() {
         val title = manualTitle.trim()
-        if (title.isBlank()) { errorMessage = "Pehle apna title likhein"; return }
+        if (title.isBlank()) { errorMessage = "Write your title first"; return }
         errorMessage = null
         scope.launch {
             var entity = ShortMetadataEntity(
@@ -466,7 +466,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
         if (showHistory) {
             if (projects.isEmpty()) {
                 Text(
-                    text = "Abhi koi entry nahi hai.",
+                    text = "No entries yet.",
                     color = TextSecondary, fontSize = 13.sp,
                     modifier = Modifier.padding(24.dp)
                 )
@@ -511,14 +511,14 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
         ) {
             ModeToggle(manualMode = manualMode, onChange = { manualMode = it; errorMessage = null })
             Text(
-                text = if (manualMode) "Aap khud likhein — video bina AI ke upload hogi."
-                       else "Video sun kar SEO Title/Description/Tags khud banenge.",
+                text = if (manualMode) "You write it yourself — the video is uploaded without AI."
+                       else "SEO Title/Description/Tags are generated by listening to the video.",
                 color = TextSecondary,
                 fontSize = 11.sp,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)
             )
 
-            SectionCard(title = "Upload kis channel par?") {
+            SectionCard(title = "Which channel to upload to?") {
                 UploadAccountSelector(
                     modifier = Modifier,
                     showLabel = false,
@@ -530,10 +530,10 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
                 val fc = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary, focusedBorderColor = CyanPrimary
                 )
-                SectionCard(title = "Title aur details", subtitle = "Title zaroori hai, baaki optional") {
+                SectionCard(title = "Title and details", subtitle = "Title is required, the rest is optional") {
                     OutlinedTextField(
                         value = manualTitle, onValueChange = { manualTitle = it },
-                        label = { Text("Title (zaroori)") }, singleLine = true,
+                        label = { Text("Title (required)") }, singleLine = true,
                         modifier = Modifier.fillMaxWidth(), colors = fc
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -545,7 +545,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
                         value = manualTags, onValueChange = { manualTags = it },
-                        label = { Text("Tags (comma se alag, optional)") },
+                        label = { Text("Tags (comma-separated, optional)") },
                         modifier = Modifier.fillMaxWidth(), colors = fc
                     )
                     Spacer(modifier = Modifier.height(10.dp))
@@ -555,11 +555,11 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(14.dp)
                     ) {
-                        Text(text = "💾 Sirf Draft save karein (video baad mein)", color = TextPrimary, fontSize = 13.sp)
+                        Text(text = "💾 Save draft only (add the video later)", color = TextPrimary, fontSize = 13.sp)
                     }
                 }
             } else {
-                SectionCard(title = "Title / Description ki zaban") {
+                SectionCard(title = "Title / Description language") {
                     ChoiceChips(
                         options = listOf("Urdu" to "Urdu", "English" to "English", "Roman Urdu" to "Roman Urdu"),
                         selected = outputLanguage,
@@ -571,16 +571,16 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
             SectionCard(title = "Upload options") {
                 if (!manualMode) {
                     SettingSwitchRow(
-                        title = "Auto-upload YouTube پر",
-                        description = "Metadata مکمل ہوتے ہی خودکار اپلوڈ ہو جائے (اپنے connected account میں)",
+                        title = "Auto-upload to YouTube",
+                        description = "Upload automatically as soon as the metadata is ready (to your connected account)",
                         checked = autoUploadEnabled,
                         onChange = { autoUploadEnabled = it; credStore.autoUploadEnabled = it }
                     )
                     HorizontalDivider(color = SurfaceVariant)
                 }
                 SettingSwitchRow(
-                    title = "Video ka naam title par rakhein",
-                    description = "Upload se pehle video ka naam (gallery mein) title ke mutabiq badal jayega",
+                    title = "Rename the video to its title",
+                    description = "Before upload, the video's name (in the gallery) is changed to match the title",
                     checked = renameToTitle,
                     onChange = { renameToTitle = it; credStore.renameVideoToTitle = it }
                 )
@@ -592,7 +592,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
                     Spacer(modifier = Modifier.height(8.dp))
                     ChoiceChips(
                         options = listOf(
-                            com.vellora.cut.autogen.data.UploadTarget.AUTO to "Auto (jaisi hai)",
+                            com.vellora.cut.autogen.data.UploadTarget.AUTO to "Auto (as is)",
                             com.vellora.cut.autogen.data.UploadTarget.SHORT to "Short",
                             com.vellora.cut.autogen.data.UploadTarget.LONG to "Long"
                         ),
@@ -602,7 +602,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
                     if (uploadTarget != com.vellora.cut.autogen.data.UploadTarget.AUTO) {
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "Agar zaroorat pari to real FFmpeg se video crop/trim ho kar upload hogi",
+                            text = "If needed, the video is cropped/trimmed with real FFmpeg before upload",
                             color = TextSecondary, fontSize = 10.sp
                         )
                     }
@@ -611,7 +611,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
 
             SectionCard(
                 title = "Thumbnail",
-                subtitle = "Optional — video upload hone ke baad lagegi"
+                subtitle = "Optional — applied after the video is uploaded"
             ) {
                 val picked = thumbnailUri
                 if (picked == null) {
@@ -621,20 +621,20 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(14.dp)
                     ) {
-                        Text(text = "🖼  Thumbnail chunein", color = TextPrimary, fontSize = 13.sp)
+                        Text(text = "🖼  Choose thumbnail", color = TextPrimary, fontSize = 13.sp)
                     }
                 } else {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         ThumbnailPreview(uri = picked, modifier = Modifier.width(120.dp).height(68.dp))
                         Spacer(modifier = Modifier.width(14.dp))
                         Column {
-                            Text(text = "✅ Thumbnail chuna gaya", color = CyanPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text(text = "✅ Thumbnail selected", color = CyanPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             Row {
                                 TextButton(onClick = { thumbnailPicker.launch("image/*") }, enabled = !isWorking) {
-                                    Text(text = "Badlein", color = TextPrimary, fontSize = 12.sp)
+                                    Text(text = "Change", color = TextPrimary, fontSize = 12.sp)
                                 }
                                 TextButton(onClick = { thumbnailUri = null }) {
-                                    Text(text = "Hatayen", color = TextSecondary, fontSize = 12.sp)
+                                    Text(text = "Remove", color = TextSecondary, fontSize = 12.sp)
                                 }
                             }
                         }
@@ -644,8 +644,8 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
 
             if (!manualMode) {
                 SectionCard(
-                    title = "Video ka topic (hint)",
-                    subtitle = "Optional — video chunne se pehle likhein ke video kis baare mein hai"
+                    title = "Video topic (hint)",
+                    subtitle = "Optional — write what the video is about before choosing the video"
                 ) {
                     OutlinedTextField(
                         value = videoHintText,
@@ -677,13 +677,13 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
                 colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
             ) {
                 Text(
-                    text = if (manualMode) "📁  Video chunein aur Upload karein" else "📁  Gallery se Video chunein",
+                    text = if (manualMode) "📁  Choose video and upload" else "📁  Choose video from gallery",
                     color = BackgroundDark, fontSize = 15.sp, fontWeight = FontWeight.Bold
                 )
             }
             if (manualMode && manualTitle.isBlank()) {
                 Text(
-                    text = "Pehle upar Title likhein",
+                    text = "Write the title above first",
                     color = TextSecondary, fontSize = 11.sp,
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)
                 )
@@ -699,11 +699,11 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
             }
 
             if (!manualMode) {
-                SectionCard(title = "Ya sirf topic se banayein", subtitle = "Video ke bagair — apna topic likhein") {
+                SectionCard(title = "Or generate from a topic only", subtitle = "Without a video — write your topic") {
                     OutlinedTextField(
                         value = manualTopicText,
                         onValueChange = { manualTopicText = it },
-                        placeholder = { Text("jaise: 5 tips ghar par workout karne ke liye") },
+                        placeholder = { Text("e.g. 5 tips for working out at home") },
                         modifier = Modifier.fillMaxWidth(),
                         minLines = 2,
                         colors = OutlinedTextFieldDefaults.colors(
@@ -720,14 +720,14 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
                         shape = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = SurfaceVariant)
                     ) {
-                        Text(text = "✍️  Topic se Generate karein", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text(text = "✍️  Generate from topic", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     }
                 }
             }
 
             // ---------------------------------------------------------- status / result
             if (isWorking) {
-                SectionCard(title = "Kaam ho raha hai") {
+                SectionCard(title = "Working") {
                     LinearProgressIndicator(
                         modifier = Modifier.fillMaxWidth(),
                         color = CyanPrimary
@@ -966,7 +966,7 @@ private fun ResultCard(
 
         if (project.generatedTitle == null) {
             Text(
-                text = if (project.status == ShortMetadataStatus.ERROR) "Abhi tak koi metadata nahi bani." else "Kaam ho raha hai…",
+                text = if (project.status == ShortMetadataStatus.ERROR) "No metadata generated yet." else "Working…",
                 color = TextSecondary,
                 fontSize = 12.sp
             )
@@ -985,7 +985,7 @@ private fun ResultCard(
             Spacer(modifier = Modifier.height(10.dp))
             if (!editing) {
                 OutlinedButton(onClick = { editing = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text(text = "✏️ Title / Description / Tags khud theek karein", color = TextPrimary, fontSize = 12.sp)
+                    Text(text = "✏️ Edit Title / Description / Tags yourself", color = TextPrimary, fontSize = 12.sp)
                 }
             } else {
                 val fc = OutlinedTextFieldDefaults.colors(
@@ -1003,7 +1003,7 @@ private fun ResultCard(
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = editTags, onValueChange = { editTags = it },
-                    label = { Text("Tags (comma se alag)") }, modifier = Modifier.fillMaxWidth(), colors = fc
+                    label = { Text("Tags (comma-separated)") }, modifier = Modifier.fillMaxWidth(), colors = fc
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1024,7 +1024,7 @@ private fun ResultCard(
 
         if (project.youtubeVideoUrl != null) {
             Spacer(modifier = Modifier.height(12.dp))
-            Text(text = "✅ YouTube پر upload ہو گئی", color = CyanPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Text(text = "✅ Uploaded to YouTube", color = CyanPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             Text(text = project.youtubeVideoUrl, color = TextSecondary, fontSize = 12.sp)
             if (!project.errorMessage.isNullOrBlank()) {
                 Spacer(modifier = Modifier.height(4.dp))
@@ -1045,7 +1045,7 @@ private fun ResultCard(
                 onClick = { onAttachVideo(project) },
                 colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
             ) {
-                Text(text = "📁 Video chunein aur isi title par Upload karein", color = BackgroundDark, fontWeight = FontWeight.Bold)
+                Text(text = "📁 Choose a video and upload it with this title", color = BackgroundDark, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -1074,13 +1074,13 @@ private fun copyToClipboard(context: Context, label: String, value: String) {
 }
 
 private fun statusLabel(status: String): String = when (status) {
-    ShortMetadataStatus.EXTRACTING_AUDIO -> "Video se audio nikala ja raha hai…"
-    ShortMetadataStatus.TRANSCRIBING -> "Sun kar likha ja raha hai (real transcription)…"
-    ShortMetadataStatus.RESEARCHING_KEYWORDS -> "YouTube se real keywords dhoonde ja rahe hain…"
-    ShortMetadataStatus.GENERATING -> "AI Title/Description/Tags bana raha hai…"
-    "generating_gemini" -> "Gemini Title/Description/Tags bana raha hai…"
-    ShortMetadataStatus.UPLOADING -> "YouTube par upload ho raha hai…"
-    else -> if (status.startsWith("generating_cloudflare")) "Gemini nahi chala — backup (Cloudflare) se ban raha hai…" else "Kaam ho raha hai…"
+    ShortMetadataStatus.EXTRACTING_AUDIO -> "Extracting audio from the video…"
+    ShortMetadataStatus.TRANSCRIBING -> "Listening and writing it down (real transcription)…"
+    ShortMetadataStatus.RESEARCHING_KEYWORDS -> "Finding real keywords on YouTube…"
+    ShortMetadataStatus.GENERATING -> "AI is generating Title/Description/Tags…"
+    "generating_gemini" -> "Gemini is generating Title/Description/Tags…"
+    ShortMetadataStatus.UPLOADING -> "Uploading to YouTube…"
+    else -> if (status.startsWith("generating_cloudflare")) "Gemini failed — generating with the backup (Cloudflare)…" else "Working…"
 }
 
 /**
@@ -1108,11 +1108,11 @@ private fun predictYouTubeClassification(context: Context, uri: Uri): String? {
 
         when {
             isVerticalOrSquare && underThreeMin ->
-                "📱 Ye video YouTube پر Short بنے گی (vertical/square + $durationLabel, 3min سے کم)"
+                "📱 This video will become a YouTube Short (vertical/square + $durationLabel, under 3 min)"
             !isVerticalOrSquare ->
-                "🎬 Ye video normal (Long) video بنے گی — wide/16:9 shape ہے، Short نہیں بن سکتی"
+                "🎬 This video will be a normal (Long) video — it is wide/16:9, so it cannot be a Short"
             else ->
-                "🎬 Ye video normal (Long) video بنے گی — 3min سے لمبی ہے ($durationLabel)"
+                "🎬 This video will be a normal (Long) video — it is longer than 3 min ($durationLabel)"
         }
     } catch (e: Exception) {
         null

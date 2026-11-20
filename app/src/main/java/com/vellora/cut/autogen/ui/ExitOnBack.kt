@@ -27,7 +27,7 @@ fun ExitOnDoubleBack(enabled: Boolean) {
             context.findActivity()?.finish()
         } else {
             lastBack = now
-            Toast.makeText(context, "Band karne ke liye dobara Back dabayein", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Press Back again to exit", Toast.LENGTH_SHORT).show()
         }
     }
 }

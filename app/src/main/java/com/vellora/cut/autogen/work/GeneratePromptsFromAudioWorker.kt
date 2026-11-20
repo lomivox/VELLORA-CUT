@@ -16,7 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * Phase 3: "audio se khudkar prompts" — the person's own voice-over is
+ * Phase 3: "prompts from audio" — the person's own voice-over is
  * the ONLY input. This worker:
  *
  *  1. Transcribes it via the existing real Whisper pipeline (same
@@ -55,7 +55,7 @@ class GeneratePromptsFromAudioWorker(
         val accounts = credentials.accounts
         if (accounts.isEmpty()) {
             return@withContext Result.failure(
-                workDataOf(KEY_ERROR to "Koi Cloudflare account save nahi hai — pehle Settings mein add karein")
+                workDataOf(KEY_ERROR to "No Cloudflare account saved — add one in Settings first")
             )
         }
 
@@ -66,7 +66,7 @@ class GeneratePromptsFromAudioWorker(
         val voiceOverUri = project.voiceOverUri
         if (voiceOverUri == null) {
             return@withContext Result.failure(
-                workDataOf(KEY_ERROR to "Is project mein voice-over set nahi hai")
+                workDataOf(KEY_ERROR to "No voice-over is set in this project")
             )
         }
 
@@ -80,12 +80,12 @@ class GeneratePromptsFromAudioWorker(
         )
         val segments = transcription.getOrElse { e ->
             return@withContext Result.failure(
-                workDataOf(KEY_ERROR to "Voice-over sun kar samajh nahi paya: ${e.message}")
+                workDataOf(KEY_ERROR to "Could not understand the voice-over: ${e.message}")
             )
         }
         if (segments.isEmpty()) {
             return@withContext Result.failure(
-                workDataOf(KEY_ERROR to "Voice-over mein koi bola hua lafz nahi mila")
+                workDataOf(KEY_ERROR to "No spoken words found in the voice-over")
             )
         }
 
@@ -104,7 +104,7 @@ class GeneratePromptsFromAudioWorker(
                 // images than its own audio actually needs, with no error
                 // shown anywhere. Bail out with nothing written instead;
                 // the existing prompt list (if any) is left untouched.
-                return@withContext Result.failure(workDataOf(KEY_ERROR to "Cancel ho gaya"))
+                return@withContext Result.failure(workDataOf(KEY_ERROR to "Cancelled"))
             }
 
             val usableAccounts = accounts.filter { it.accountId !in exhaustedAccountIds }

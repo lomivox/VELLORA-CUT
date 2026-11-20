@@ -135,11 +135,11 @@ fun TimelineScreen(
             val uri = com.vellora.cut.autogen.render.GallerySaver.saveVideoToGallery(context, file)
             android.widget.Toast.makeText(
                 context,
-                if (uri != null) "✅ Gallery mein save ho gayi" else "❌ Save nahi ho saki",
+                if (uri != null) "✅ Saved to Gallery" else "❌ Could not save",
                 android.widget.Toast.LENGTH_SHORT
             ).show()
         } else if (!granted) {
-            android.widget.Toast.makeText(context, "Storage permission chahiye", android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(context, "Storage permission required", android.widget.Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -148,7 +148,7 @@ fun TimelineScreen(
             val uri = com.vellora.cut.autogen.render.GallerySaver.saveVideoToGallery(context, file)
             android.widget.Toast.makeText(
                 context,
-                if (uri != null) "✅ Gallery mein save ho gayi (Movies/VELLORA-CUT)" else "❌ Save nahi ho saki",
+                if (uri != null) "✅ Saved to Gallery (Movies/VELLORA-CUT)" else "❌ Could not save",
                 android.widget.Toast.LENGTH_SHORT
             ).show()
         } else {
@@ -388,7 +388,7 @@ fun TimelineScreen(
             ) {
                 if (doneImages.isEmpty()) {
                     Text(
-                        text = "ابھی کوئی image تیار نہیں — پہلے Prompts screen پر جا کر Generate All چلائیں",
+                        text = "No images are ready yet — go to the Prompts screen and run Generate All first",
                         color = TextSecondary,
                         fontSize = 12.sp,
                         modifier = Modifier.align(Alignment.Center)
@@ -415,7 +415,7 @@ fun TimelineScreen(
             val triggerRender: () -> Unit = {
                 showExportOverlay = true
                 renderState = RenderUiState.Rendering(0f)
-                com.vellora.cut.autogen.render.RenderKeepAliveService.start(context, "Video export ho rahi hai…")
+                com.vellora.cut.autogen.render.RenderKeepAliveService.start(context, "Exporting video…")
                 RenderEngine.render(
                     context = context,
                     project = currentProject,
@@ -493,7 +493,7 @@ fun TimelineScreen(
                         putExtra(Intent.EXTRA_STREAM, uri)
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
-                    context.startActivity(Intent.createChooser(intent, "Episode share karein"))
+                    context.startActivity(Intent.createChooser(intent, "Share episode"))
                 },
                 onRetry = { startRender?.invoke() }
             )
@@ -549,7 +549,7 @@ fun TimelineScreen(
                 }
                 SmallSliderSheet(
                     title = "Noise Reduction",
-                    subtitle = "اصل FFmpeg denoiser (afftdn) — toggle سے آن/آف، slider چھوڑتے ہی خودکار apply",
+                    subtitle = "Real FFmpeg denoiser (afftdn) — toggle on/off; the slider applies automatically when released",
                     value = proj.noiseReductionPercent,
                     valueRange = 0..100,
                     valueLabel = { "$it%" },
@@ -577,7 +577,7 @@ fun TimelineScreen(
             currentProject?.let { proj ->
                 SmallSliderSheet(
                     title = "Volume",
-                    subtitle = "اصل FFmpeg gain (volume filter) — slider چھوڑتے ہی خودکار apply",
+                    subtitle = "Real FFmpeg gain (volume filter) — applies automatically when you release the slider",
                     value = proj.volumePercent,
                     valueRange = 0..500,
                     valueLabel = { "$it%" },
@@ -613,7 +613,7 @@ fun TimelineScreen(
             currentProject?.let { proj ->
                 ChoiceBottomSheet(
                     title = "Sync Mode",
-                    subtitle = "Images duration ke sath kaise sync hongi",
+                    subtitle = "How images sync with the duration",
                     options = listOf(
                         ChoiceOption(
                             label = "Scale images",
@@ -647,7 +647,7 @@ fun TimelineScreen(
             currentProject?.let { proj ->
                 ChoiceBottomSheet(
                     title = "Transition",
-                    subtitle = "Do images ke darmiyan cut ka style — 10 real FFmpeg xfade transitions",
+                    subtitle = "Transition style between two images — 10 real FFmpeg xfade transitions",
                     options = TransitionType.ALL.map { value ->
                         ChoiceOption(
                             label = TransitionType.label(value),
@@ -670,7 +670,7 @@ fun TimelineScreen(
             currentProject?.let { proj ->
                 ChoiceBottomSheet(
                     title = "Motion Effect",
-                    subtitle = "Har image par live camera movement — 10 real zoompan formulas",
+                    subtitle = "Live camera movement on each image — 10 real zoompan formulas",
                     options = MotionEffect.ALL.map { value ->
                         ChoiceOption(
                             label = MotionEffect.label(value),
@@ -699,7 +699,7 @@ fun TimelineScreen(
                     onGenerate = {
                         val voiceOverUri = proj.voiceOverUri
                         if (voiceOverUri == null) {
-                            captionsError = "Pehle voice-over upload karein"
+                            captionsError = "Upload a voice-over first"
                             return@CaptionsSheet
                         }
                         captionsGenerating = true
@@ -722,7 +722,7 @@ fun TimelineScreen(
                                 dao.updateProject(updated)
                                 project = updated
                             }.onFailure { e ->
-                                captionsError = e.message ?: "Transcription fail hui"
+                                captionsError = e.message ?: "Transcription failed"
                             }
                         }
                     },
@@ -754,7 +754,7 @@ fun TimelineScreen(
         if (showAudioSourceSheet) {
             ChoiceBottomSheet(
                 title = "Voice-Over",
-                subtitle = "Seedhi audio file chunein, ya kisi video mein se uski audio nikal lein",
+                subtitle = "Pick an audio file directly, or extract the audio from a video",
                 options = listOf(
                     ChoiceOption(
                         label = "🎵 Audio File",
@@ -765,7 +765,7 @@ fun TimelineScreen(
                         }
                     ),
                     ChoiceOption(
-                        label = "🎬 Video se Nikalo",
+                        label = "🎬 Extract from video",
                         selected = false,
                         onSelect = {
                             showAudioSourceSheet = false
@@ -784,7 +784,7 @@ fun TimelineScreen(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     CircularProgressIndicator(color = CyanPrimary)
                     Spacer(modifier = Modifier.height(10.dp))
-                    Text(text = "Video se audio nikali ja rahi hai…", color = TextPrimary, fontSize = 13.sp)
+                    Text(text = "Extracting audio from the video…", color = TextPrimary, fontSize = 13.sp)
                 }
             }
         }
@@ -1092,7 +1092,7 @@ private fun RenderSection(
                 }
             }
             is RenderUiState.Rendering -> {
-                Text(text = "Render ho raha hai…", color = TextPrimary, fontSize = 13.sp)
+                Text(text = "Rendering…", color = TextPrimary, fontSize = 13.sp)
                 Spacer(modifier = Modifier.height(8.dp))
                 LinearProgressIndicator(
                     progress = { state.progress },
@@ -1108,10 +1108,10 @@ private fun RenderSection(
                 )
             }
             is RenderUiState.Done -> {
-                Text(text = "✅ Render مکمل", color = CyanPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text(text = "✅ Render complete", color = CyanPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(text = state.file.name, color = TextSecondary, fontSize = 11.sp)
-                Text(text = "💾 Gallery (Movies/VELLORA-CUT) میں محفوظ ہو گئی", color = TextSecondary, fontSize = 11.sp)
+                Text(text = "💾 Saved to Gallery (Movies/VELLORA-CUT)", color = TextSecondary, fontSize = 11.sp)
                 Spacer(modifier = Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Button(
@@ -1127,12 +1127,12 @@ private fun RenderSection(
                         Text(text = "Share", color = BackgroundDark, fontWeight = FontWeight.Bold)
                     }
                     OutlinedButton(onClick = onRenderClick) {
-                        Text(text = "دوبارہ Render", color = TextPrimary)
+                        Text(text = "Render again", color = TextPrimary)
                     }
                 }
             }
             is RenderUiState.Error -> {
-                Text(text = "❌ Render fail ہوا", color = Color(0xFFFF6B6B), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text(text = "❌ Render failed", color = Color(0xFFFF6B6B), fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(text = state.message, color = TextSecondary, fontSize = 11.sp)
                 Spacer(modifier = Modifier.height(10.dp))
@@ -1140,7 +1140,7 @@ private fun RenderSection(
                     onClick = onRenderClick,
                     colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
                 ) {
-                    Text(text = "دوبارہ کوشش کریں", color = BackgroundDark, fontWeight = FontWeight.Bold)
+                    Text(text = "Try again", color = BackgroundDark, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -1162,7 +1162,7 @@ private fun SummaryCard(imageCount: Int, totalMs: Long, voiceOverMs: Long) {
         }
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            text = if (voiceOverMs > 0) "Voice-over: ${formatMs(voiceOverMs)} (master)" else "کوئی voice-over duration نہیں ملی",
+            text = if (voiceOverMs > 0) "Voice-over: ${formatMs(voiceOverMs)} (master)" else "No voice-over duration found",
             color = TextSecondary,
             fontSize = 11.sp
         )
@@ -1380,7 +1380,7 @@ private fun EditDurationDialog(
         text = {
             Column {
                 Text(
-                    text = "سیکنڈز میں لکھیں (مثلاً 4، 6، 10) — خالی چھوڑیں تو یہ image واپس 'auto' ہو جائے گی",
+                    text = "Enter seconds (e.g. 4, 6, 10) — leave empty to set this image back to 'auto'",
                     color = TextSecondary,
                     fontSize = 11.sp
                 )
@@ -1489,7 +1489,7 @@ private suspend fun importCaptionFontFromUri(
             name.substringAfterLast('/').replace(Regex("[^a-zA-Z0-9._-]"), "_")
 
         val input = context.contentResolver.openInputStream(uri)
-            ?: return@withContext Result.failure(Exception("File khol nahi saki"))
+            ?: return@withContext Result.failure(Exception("Could not open the file"))
 
         input.use { stream ->
             if (looksLikeZip) {
@@ -1508,13 +1508,13 @@ private suspend fun importCaptionFontFromUri(
                                 return@withContext Result.success("imported:$safeName")
                             } else {
                                 destFile.delete()
-                                return@withContext Result.failure(Exception("Zip ke andar font file khali nikli"))
+                                return@withContext Result.failure(Exception("The font file inside the zip is empty"))
                             }
                         }
                         zip.closeEntry()
                         entry = zip.nextEntry
                     }
-                    return@withContext Result.failure(Exception("Is zip ke andar koi .ttf/.otf nahi mila"))
+                    return@withContext Result.failure(Exception("No .ttf/.otf found inside this zip"))
                 }
             } else {
                 val ext = displayName.substringAfterLast('.', "").lowercase()
@@ -1575,7 +1575,7 @@ private fun CaptionsSheet(
                 fontsRefreshTick++
                 onFontChange(newFontId) // apply the just-imported font immediately
             }.onFailure { e ->
-                importFontError = e.message ?: "Font import fail hui"
+                importFontError = e.message ?: "Font import failed"
             }
         }
     }
@@ -1599,7 +1599,7 @@ private fun CaptionsSheet(
             Text(text = "Captions", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = "اصل Whisper AI transcription — جو بولا گیا وہی لکھا جائے گا",
+                text = "Real Whisper AI transcription — what is spoken is what gets written",
                 color = TextSecondary,
                 fontSize = 11.sp
             )
@@ -1608,7 +1608,7 @@ private fun CaptionsSheet(
             Text(text = "Language", color = TextSecondary, fontSize = 11.sp)
             Spacer(modifier = Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                listOf("ur" to "اردو", "hi" to "हिंदी").forEach { (code, label) ->
+                listOf("ur" to "Urdu", "hi" to "हिंदी").forEach { (code, label) ->
                     val selected = project.captionsLanguage == code
                     Surface(
                         onClick = { onLanguageChange(code) },
@@ -1626,7 +1626,7 @@ private fun CaptionsSheet(
                 }
             }
             Text(
-                text = "(ابھی صرف یہ دو — باقی زبانیں بعد میں شامل ہوں گی)",
+                text = "(only these two for now — more languages will be added later)",
                 color = TextSecondary,
                 fontSize = 10.sp,
                 modifier = Modifier.padding(top = 4.dp)
@@ -1670,7 +1670,7 @@ private fun CaptionsSheet(
                     color = SurfaceVariant
                 ) {
                     Text(
-                        text = if (importingFont) "⏳ Import ho raha hai…" else "+ Import Font",
+                        text = if (importingFont) "⏳ Importing…" else "+ Import Font",
                         color = TextPrimary,
                         fontSize = 12.sp,
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
@@ -1682,7 +1682,7 @@ private fun CaptionsSheet(
                 Text(text = "⚠ $importFontError", color = Color(0xFFFF6B6B), fontSize = 11.sp)
             }
             Text(
-                text = "Font file (.ttf/.otf) ya us par mushtamil .zip download karke yahan import karein",
+                text = "Download a font file (.ttf/.otf) or a .zip containing one, then import it here",
                 color = TextSecondary,
                 fontSize = 10.sp,
                 modifier = Modifier.padding(top = 4.dp)
@@ -1691,7 +1691,7 @@ private fun CaptionsSheet(
 
             when {
                 isGenerating -> {
-                    Text(text = "Sun kar likh raha hai (real transcription)…", color = TextSecondary, fontSize = 12.sp)
+                    Text(text = "Listening and writing it down (real transcription)…", color = TextSecondary, fontSize = 12.sp)
                 }
                 segments.isEmpty() -> {
                     if (errorMessage != null) {
@@ -1712,7 +1712,7 @@ private fun CaptionsSheet(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(text = "${segments.size} lines mil gayi", color = TextPrimary, fontSize = 13.sp)
+                        Text(text = "${segments.size} lines found", color = TextPrimary, fontSize = 13.sp)
                         Switch(
                             checked = project.captionsEnabled,
                             onCheckedChange = onToggleEnabled,
@@ -2091,8 +2091,8 @@ private fun ExportProgressOverlay(
         ) {
             Text(
                 text = when (renderState) {
-                    is RenderUiState.Done -> "✅ Export مکمل"
-                    is RenderUiState.Error -> "⚠ Export ناکام"
+                    is RenderUiState.Done -> "✅ Export complete"
+                    is RenderUiState.Error -> "⚠ Export failed"
                     else -> "Exporting…"
                 },
                 color = TextPrimary,
@@ -2181,7 +2181,7 @@ private fun ExportProgressOverlay(
                         }
                     }
                     Spacer(modifier = Modifier.height(10.dp))
-                    Text(text = "💾 Gallery میں خود بخود محفوظ ہو گئی", color = TextSecondary, fontSize = 11.sp)
+                    Text(text = "💾 Saved to Gallery automatically", color = TextSecondary, fontSize = 11.sp)
                 }
                 is RenderUiState.Error -> {
                     Text(text = renderState.message, color = TextSecondary, fontSize = 12.sp)
@@ -2190,11 +2190,11 @@ private fun ExportProgressOverlay(
                         onClick = onRetry,
                         colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
                     ) {
-                        Text(text = "دوبارہ کوشش کریں", color = BackgroundDark, fontWeight = FontWeight.Bold)
+                        Text(text = "Try again", color = BackgroundDark, fontWeight = FontWeight.Bold)
                     }
                 }
                 else -> {
-                    Text(text = "Screen بند نہ کریں — رینڈر جاری ہے", color = TextSecondary, fontSize = 12.sp)
+                    Text(text = "Do not close the screen — render in progress", color = TextSecondary, fontSize = 12.sp)
                 }
             }
         }

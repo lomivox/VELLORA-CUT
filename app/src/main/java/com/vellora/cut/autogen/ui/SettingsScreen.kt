@@ -98,8 +98,8 @@ fun SettingsScreen(onBack: () -> Unit) {
             Text(text = if (workerMode) "AI Settings" else "Cloudflare AI Accounts", color = CyanPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = if (workerMode) "Cloudflare AI aur YouTube research ki keys server par hain — yahan kuch lagane ki zaroorat nahi." else "یہ credentials صرف اس فون پر، encrypted طور پر محفوظ ہوتی ہیں۔ " +
-                    "ایک سے زیادہ accounts add کریں — روزانہ کوٹہ ختم ہونے پر اگلا account خود استعمال ہوگا۔",
+                text = if (workerMode) "Cloudflare AI and YouTube research keys are kept on the server — nothing to enter here." else "These credentials are stored only on this phone, encrypted. " +
+                    "Add more than one account — when the daily quota runs out, the next account is used automatically.",
                 color = TextSecondary,
                 fontSize = 12.sp
             )
@@ -144,7 +144,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                             .filter { it.accountId.isNotBlank() && it.apiToken.isNotBlank() }
                             .map { CloudflareAccount(it.accountId, it.apiToken) }
                         store.accounts = validAccounts
-                        accountsSavedMessage = "${validAccounts.size} account(s) محفوظ ہو گئے"
+                        accountsSavedMessage = "${validAccounts.size} account(s) saved"
                     },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
@@ -161,12 +161,12 @@ fun SettingsScreen(onBack: () -> Unit) {
 
                 }
                 Spacer(modifier = Modifier.height(28.dp))
-                Text(text = "Gemini API Keys (پہلے یہ استعمال ہوں گی)", color = CyanPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text(text = "Gemini API Keys (used first)", color = CyanPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Shorts Metadata کے لیے Gemini 2.5 ویڈیو کی آواز سنتا اور فریمز دیکھتا ہے، اس لیے title/description/tags بہت بہتر بنتے ہیں۔ " +
-                        "ایک سے زیادہ keys add کریں: ہر key کو دو بار آزمایا جاتا ہے، پھر اگلی key۔ " +
-                        "اگر کوئی key نہ چلے تو اوپر والے Cloudflare accounts پرانے طریقے سے کام کریں گے۔",
+                    text = "For Shorts Metadata, Gemini 2.5 listens to the video's audio and looks at its frames, so the title/description/tags come out much better. " +
+                        "Add more than one key: each key is tried twice, then the next key. " +
+                        "If no key works, the Cloudflare accounts above are used as before.",
                     color = TextSecondary,
                     fontSize = 12.sp
                 )
@@ -209,7 +209,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                     onClick = {
                         val valid = geminiRows.map { it.value.trim() }.filter { it.isNotBlank() }.distinct()
                         store.geminiKeys = valid
-                        geminiSavedMessage = "${valid.size} Gemini key(s) محفوظ ہو گئیں"
+                        geminiSavedMessage = "${valid.size} Gemini key(s) saved"
                     },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
@@ -226,11 +226,11 @@ fun SettingsScreen(onBack: () -> Unit) {
 
                 if (!workerMode) {
                 Spacer(modifier = Modifier.height(28.dp))
-                Text(text = "YouTube Data API Key (اختیاری)", color = CyanPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text(text = "YouTube Data API Key (optional)", color = CyanPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Shorts Metadata tool کے لیے — اس topic پر پہلے سے چل رہی videos کے real keywords " +
-                        "دیکھ کر behtar research کرنے کے لیے۔ خالی چھوڑ دیں تو YouTube کے مفت autocomplete سے کام چلے گا۔",
+                    text = "For the Shorts Metadata tool — to look at the real keywords of videos already doing well on this topic " +
+                        "and research better. If left empty, YouTube's free autocomplete is used instead.",
                     color = TextSecondary,
                     fontSize = 12.sp
                 )
@@ -247,7 +247,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 Button(
                     onClick = {
                         store.youtubeApiKey = youtubeApiKey
-                        youtubeSavedMessage = if (youtubeApiKey.isBlank()) "YouTube key khali save hui (autocomplete use hoga)" else "YouTube API key محفوظ ہو گئی"
+                        youtubeSavedMessage = if (youtubeApiKey.isBlank()) "YouTube key saved empty (autocomplete will be used)" else "YouTube API key saved"
                     },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
@@ -267,8 +267,8 @@ fun SettingsScreen(onBack: () -> Unit) {
                 Text(text = "Channel Name", color = CyanPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Shorts Metadata tool ہر description کے آخر میں اسی نام سے \"Subscribe to <name>\" " +
-                        "جیسی line خود شامل کرے گا — ایک دفعہ یہاں لکھیں، ہر video پر لگے گا۔",
+                    text = "The Shorts Metadata tool adds a line like \"Subscribe to <name>\" with this name at the end of every description — " +
+                        "write it once here and it is added to every video.",
                     color = TextSecondary,
                     fontSize = 12.sp
                 )
@@ -285,7 +285,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 Button(
                     onClick = {
                         store.channelName = channelName
-                        channelSavedMessage = "Channel Name محفوظ ہو گیا"
+                        channelSavedMessage = "Channel name saved"
                     },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
@@ -301,11 +301,11 @@ fun SettingsScreen(onBack: () -> Unit) {
                 }
 
                 Spacer(modifier = Modifier.height(28.dp))
-                Text(text = "Channel Style (ٹیمپلیٹ)", color = CyanPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text(text = "Channel Style (template)", color = CyanPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "اپنے چینل کے قاعدے ایک دفعہ لکھیں، ہر ویڈیو پر لگیں گے۔ مثلاً: ٹائٹل ہمیشہ \"سورۃ ... | خوبصورت تلاوت\" کے انداز میں ہو؛ " +
-                        "description میں اکیڈمی یا کورس کی بات نہ ہو۔",
+                    text = "Write your channel's rules once and they apply to every video. For example: the title should always follow the style \"Surah ... | Beautiful Recitation\"; " +
+                        "the description should not mention any academy or course.",
                     color = TextSecondary,
                     fontSize = 12.sp
                 )
@@ -323,7 +323,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 OutlinedTextField(
                     value = fixedTags,
                     onValueChange = { fixedTags = it; styleSavedMessage = null },
-                    label = { Text("Fixed tags (comma سے الگ) — ہر ویڈیو میں شامل ہوں گے") },
+                    label = { Text("Fixed tags (comma-separated) — added to every video") },
                     minLines = 2,
                     maxLines = 5,
                     modifier = Modifier.fillMaxWidth(),
@@ -334,7 +334,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                     onClick = {
                         store.channelStyle = channelStyle
                         store.fixedTags = fixedTags
-                        styleSavedMessage = "Channel Style محفوظ ہو گیا"
+                        styleSavedMessage = "Channel Style saved"
                     },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)

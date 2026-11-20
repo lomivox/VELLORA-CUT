@@ -13,12 +13,12 @@ export function json(status, message, extra) {
 export function checkAppKey(request, env) {
   const sent = (request.headers.get("X-App-Key") || "").trim();
   const want = String(env.APP_KEY || "").trim();
-  if (!want) return json(500, "Server par APP_KEY secret set nahi hai");
+  if (!want) return json(500, "APP_KEY secret is not set on the server");
   // constant-time-ish compare
-  if (sent.length !== want.length) return json(401, "App key galat hai");
+  if (sent.length !== want.length) return json(401, "Invalid app key");
   let diff = 0;
   for (let i = 0; i < want.length; i++) diff |= sent.charCodeAt(i) ^ want.charCodeAt(i);
-  return diff === 0 ? null : json(401, "App key galat hai");
+  return diff === 0 ? null : json(401, "Invalid app key");
 }
 
 /**

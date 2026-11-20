@@ -23,7 +23,7 @@ class OAuthRedirectActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val label = TextView(this).apply {
-            text = "Channel jod raha hoon…"
+            text = "Connecting the channel…"
             textSize = 18f
             setPadding(48, 160, 48, 48)
         }
@@ -37,7 +37,7 @@ class OAuthRedirectActivity : Activity() {
         scope.launch {
             val result = ChannelAuth.completeSignIn(applicationContext, data)
             val message = when (result) {
-                is ChannelAuth.ConnectResult.Ok -> "Channel jur gaya: ${result.label}"
+                is ChannelAuth.ConnectResult.Ok -> "Channel connected: ${result.label}"
                 is ChannelAuth.ConnectResult.Fail -> {
                     ChannelAuth.setLastError(applicationContext, result.message)
                     result.message

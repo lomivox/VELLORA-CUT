@@ -78,7 +78,7 @@ object AudioProcessor {
         val dest = File(workDir, "source_input")
         context.contentResolver.openInputStream(uri)?.use { input ->
             FileOutputStream(dest).use { output -> input.copyTo(output) }
-        } ?: throw IllegalStateException("Voice-over URI khol nahi saka")
+        } ?: throw IllegalStateException("Could not open the voice-over URI")
         return dest
     }
 }

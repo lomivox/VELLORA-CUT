@@ -114,9 +114,9 @@ fun AutoGenProjectListScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(text = "کوئی پروجیکٹ موجود نہیں", color = TextSecondary, fontSize = 14.sp)
+                    Text(text = "No projects yet", color = TextSecondary, fontSize = 14.sp)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(text = "نیچے + دبا کر نیا شروع کریں", color = TextSecondary, fontSize = 12.sp)
+                    Text(text = "Tap + below to start a new one", color = TextSecondary, fontSize = 12.sp)
                 }
             }
         } else {

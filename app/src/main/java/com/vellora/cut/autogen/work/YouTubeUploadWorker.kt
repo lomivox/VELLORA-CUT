@@ -62,7 +62,7 @@ class YouTubeUploadWorker(
         val entity = dao.getById(entityId) ?: return Result.failure()
 
         if (!videoFile.exists()) {
-            dao.update(entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = "Upload ke liye video file nahi mili — dobara Upload Now dabayein"))
+            dao.update(entity.copy(status = ShortMetadataStatus.ERROR, errorMessage = "Video file not found for upload — tap Upload Now again"))
             return Result.failure()
         }
 
@@ -85,7 +85,7 @@ class YouTubeUploadWorker(
             when (val t = YouTubeAuthManager.getFreshAccessToken(applicationContext, accountKey)) {
                 is YouTubeAuthManager.TokenResult.Success -> t.accessToken
                 is YouTubeAuthManager.TokenResult.NeedsUserAction ->
-                    throw IllegalStateException("YouTube permission dobara chahiye — Settings mein is channel ko Remove kar ke dobara jodein")
+                    throw IllegalStateException("YouTube permission is needed again — remove this channel in Settings and connect it again")
                 is YouTubeAuthManager.TokenResult.Error -> throw IOException(t.message)
             }
         }
@@ -151,7 +151,7 @@ class YouTubeUploadWorker(
         if (ok != null) {
             dao.update(latest.copy(status = ShortMetadataStatus.UPLOADED, youtubeVideoUrl = ok.videoUrl, errorMessage = ok.thumbnailNote))
             UploadStaging.cleanup(applicationContext, entityId)
-            notifyFinished(entityId, "Upload ho gayi ✅", title + (ok.thumbnailNote?.let { "\n$it" } ?: ""))
+            notifyFinished(entityId, "Upload complete ✅", title + (ok.thumbnailNote?.let { "\n$it" } ?: ""))
             return Result.success()
         }
 
@@ -161,7 +161,7 @@ class YouTubeUploadWorker(
             // Keep the video and the upload address: the next attempt continues where this one stopped.
             return Result.retry()
         }
-        val message = error?.message ?: "Upload nahi ho saki"
+        val message = error?.message ?: "Upload failed"
         dao.update(latest.copy(status = ShortMetadataStatus.ERROR, errorMessage = "Upload fail: $message"))
         UploadStaging.cleanup(applicationContext, entityId)
         notifyFinished(entityId, "Upload fail ❌", message)
@@ -185,10 +185,10 @@ class YouTubeUploadWorker(
         ensureChannel()
         val percent = if (total > 0) (sent * 100 / total).toInt().coerceIn(0, 100) else 0
         val text = if (sent <= 0L) {
-            "Shuru ho rahi hai…"
+            "Starting…"
         } else {
             "$percent% • ${UploadFormat.bytes(sent)} / ${UploadFormat.bytes(total)}" +
-                if (eta >= 0) " • ${UploadFormat.duration(eta)} baaqi" else ""
+                if (eta >= 0) " • ${UploadFormat.duration(eta)} left" else ""
         }
         val cancelIntent = WorkManager.getInstance(applicationContext).createCancelPendingIntent(id)
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)

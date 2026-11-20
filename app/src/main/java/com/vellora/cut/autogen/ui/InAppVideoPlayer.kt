@@ -120,7 +120,7 @@ fun InAppVideoPlayer(
                 modifier = Modifier.padding(horizontal = 16.dp)
             ) {
                 Text(
-                    text = "Nahi chal rahi? YouTube par kholein",
+                    text = "Not playing? Open on YouTube",
                     color = YtMuted, fontSize = 13.sp,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
                 )

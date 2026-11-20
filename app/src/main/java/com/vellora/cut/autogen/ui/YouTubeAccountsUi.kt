@@ -52,7 +52,7 @@ private fun rememberAddAccount(onError: (String?) -> Unit, onChanged: () -> Unit
             val acc = GoogleSignIn.getSignedInAccountFromIntent(result.data).getResult(ApiException::class.java)
             val email = acc.email
             if (email == null) {
-                onError("Is account ka email nahi mila")
+                onError("No email found for this account")
             } else {
                 YouTubeAccounts.addOrUpdate(context, email, acc.displayName.orEmpty(), select = true)
                 onError(null)
@@ -77,13 +77,13 @@ private fun rememberChannelConnect(onError: (String?) -> Unit): () -> Unit {
     return {
         val intent = ChannelAuth.buildAuthIntent(context)
         if (intent == null) {
-            onError("Is app mein Google Client ID shamil nahi hai")
+            onError("This app has no Google Client ID built in")
         } else {
             onError(null)
             try {
                 context.startActivity(intent)
             } catch (e: Exception) {
-                onError("Browser nahi khul saka")
+                onError("Could not open the browser")
             }
         }
     }
@@ -92,12 +92,12 @@ private fun rememberChannelConnect(onError: (String?) -> Unit): () -> Unit {
 /** A readable reason for a failed Google sign-in, plus the exact package + SHA-1 this app presents to Google. */
 private fun describeSignInFailure(context: android.content.Context, code: Int): String {
     val why = when (code) {
-        10 -> "Google ko is app ka (package + SHA-1) jora Cloud Console mein nahi mila. Neeche wale dono ke sath Android OAuth client banayein."
-        7 -> "Google ne network error bataya. Internet theek ho to sab se mumkin wajah yeh hai ke is app ka (package + SHA-1) Cloud Console mein registered nahi. Neeche wale dono check karein."
-        12500 -> "Google ne sign-in qabool nahi ki. OAuth client aur consent screen (Test users) check karein."
-        else -> "Sign-in nahi hui."
+        10 -> "Google could not find this app's (package + SHA-1) in the Cloud Console. Create an Android OAuth client with both values below."
+        7 -> "Google reported a network error. If your internet is fine, the most likely cause is that this app's (package + SHA-1) is not registered in the Cloud Console. Check both values below."
+        12500 -> "Google rejected the sign-in. Check the OAuth client and the consent screen (Test users)."
+        else -> "Sign-in failed."
     }
-    return "Sign-in fail hui (code: $code)\n$why\n" + AppIdentity.summary(context)
+    return "Sign-in failed (code: $code)\n$why\n" + AppIdentity.summary(context)
 }
 
 @Composable
@@ -144,15 +144,15 @@ fun YouTubeAccountsSection() {
     Text(text = "YouTube Accounts (Upload)", color = CyanPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
     Spacer(modifier = Modifier.height(4.dp))
     Text(
-        text = "Jitne chahein Gmail / channel jodein. Upload ke waqt jis channel par bhejna ho wahi chunein — " +
-            "video usi channel par jayegi.",
+        text = "Connect as many Gmail accounts / channels as you like. When uploading, pick the channel you want — " +
+            "the video goes to that channel.",
         color = TextSecondary,
         fontSize = 12.sp
     )
     Spacer(modifier = Modifier.height(10.dp))
 
     if (accounts.isEmpty()) {
-        Text(text = "Abhi koi account connected nahi.", color = TextSecondary, fontSize = 13.sp)
+        Text(text = "No account connected yet.", color = TextSecondary, fontSize = 13.sp)
     }
     accounts.forEach { acc ->
         AccountRow(
@@ -170,13 +170,13 @@ fun YouTubeAccountsSection() {
         colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
     ) {
         Text(
-            text = "+ Channel chunein aur jodein",
+            text = "+ Choose and connect a channel",
             color = BackgroundDark, fontWeight = FontWeight.Bold
         )
     }
     Text(
-        text = "Google ki apni screen khulegi jahan aap channel chunte hain (Brand channel bhi). " +
-            "Dusra channel jodna ho to dobara dabayein aur wahan dusra channel chunein.",
+        text = "Google's own screen opens where you choose the channel (Brand channels too). " +
+            "To add another channel, tap again and choose a different channel there.",
         color = TextSecondary,
         fontSize = 11.sp
     )
@@ -187,7 +187,7 @@ fun YouTubeAccountsSection() {
         modifier = Modifier.fillMaxWidth(),
         colors = ButtonDefaults.buttonColors(containerColor = SurfaceVariant)
     ) {
-        Text(text = "Purana tareeqa: Gmail ka default channel", color = TextPrimary, fontSize = 12.sp)
+        Text(text = "Old method: the Gmail's default channel", color = TextPrimary, fontSize = 12.sp)
     }
     error?.let {
         Spacer(modifier = Modifier.height(6.dp))
@@ -196,15 +196,15 @@ fun YouTubeAccountsSection() {
     Spacer(modifier = Modifier.height(6.dp))
     SelectionContainer {
         Text(
-            text = "Is app ki pehchan (Google ko yehi jora chahiye):\n" + AppIdentity.summary(context),
+            text = "This app's identity (what Google needs registered):\n" + AppIdentity.summary(context),
             color = TextSecondary,
             fontSize = 10.sp
         )
     }
     Spacer(modifier = Modifier.height(6.dp))
     Text(
-        text = "Note: ek Gmail apna channel (aur agar Google ne dikhaya to Brand channel) deta hai. " +
-            "Alag channel ke liye usi channel wali Gmail se connect karein.",
+        text = "Note: a Gmail gives its own channel (and a Brand channel, if Google shows it). " +
+            "For a different channel, connect with the Gmail that owns that channel.",
         color = TextSecondary,
         fontSize = 11.sp
     )
@@ -231,7 +231,7 @@ private fun AccountRow(acc: YtAccount, active: Boolean, onUse: () -> Unit, onRem
                 )
                 if (active) {
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text(text = "● Upload yahan jayega", color = CyanPrimary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                    Text(text = "● Uploads go here", color = CyanPrimary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
                 }
             }
             Column(horizontalAlignment = Alignment.End) {
@@ -267,7 +267,7 @@ fun UploadAccountSelector(modifier: Modifier = Modifier, showLabel: Boolean = tr
 
     Column(modifier = modifier) {
         if (showLabel) {
-            Text(text = "Upload kis channel par?", color = TextSecondary, fontSize = 11.sp)
+            Text(text = "Which channel to upload to?", color = TextSecondary, fontSize = 11.sp)
             Spacer(modifier = Modifier.height(6.dp))
         }
         // Wraps onto a second line instead of running off the screen, so every channel and "+ Account" stay visible.

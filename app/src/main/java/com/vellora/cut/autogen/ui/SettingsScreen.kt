@@ -95,16 +95,10 @@ fun SettingsScreen(onBack: () -> Unit) {
                 }
                 Spacer(modifier = Modifier.height(8.dp))
             }
-            Text(text = if (workerMode) "AI Settings" else "Cloudflare AI Accounts", color = CyanPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = if (workerMode) "Keys are managed on the server." else "Stored encrypted on this phone. " +
-                    "Add several accounts — the next is used when a quota ends.",
-                color = TextSecondary,
-                fontSize = 12.sp
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
+            if (!workerMode) {
+                Text(text = "Cloudflare AI Accounts", color = CyanPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(16.dp))
+            }
 
             Column(
                 modifier = Modifier
@@ -162,14 +156,6 @@ fun SettingsScreen(onBack: () -> Unit) {
                 }
                 Spacer(modifier = Modifier.height(28.dp))
                 Text(text = "Gemini API Keys (used first)", color = CyanPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "Used first for Shorts Metadata (better results). " +
-                        "Add several keys; each is tried twice. " +
-                        "Falls back to Cloudflare if none work.",
-                    color = TextSecondary,
-                    fontSize = 12.sp
-                )
                 Spacer(modifier = Modifier.height(8.dp))
                 geminiRows.forEachIndexed { index, row ->
                     key(row.key) {
@@ -227,13 +213,6 @@ fun SettingsScreen(onBack: () -> Unit) {
                 if (!workerMode) {
                 Spacer(modifier = Modifier.height(28.dp))
                 Text(text = "YouTube Data API Key (optional)", color = CyanPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "Used for keyword research. " +
-                        "Optional — empty uses free autocomplete.",
-                    color = TextSecondary,
-                    fontSize = 12.sp
-                )
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = youtubeApiKey,
@@ -265,13 +244,6 @@ fun SettingsScreen(onBack: () -> Unit) {
                 }
                 Spacer(modifier = Modifier.height(28.dp))
                 Text(text = "Channel Name", color = CyanPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "Added to every description as \"Subscribe to <name>\"." +
-                        "",
-                    color = TextSecondary,
-                    fontSize = 12.sp
-                )
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = channelName,
@@ -302,13 +274,6 @@ fun SettingsScreen(onBack: () -> Unit) {
 
                 Spacer(modifier = Modifier.height(28.dp))
                 Text(text = "Channel Style (template)", color = CyanPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "Rules applied to every video, e.g. titles like \"Surah ... | Beautiful Recitation\"; " +
-                        "no academy or course mentions.",
-                    color = TextSecondary,
-                    fontSize = 12.sp
-                )
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = channelStyle,

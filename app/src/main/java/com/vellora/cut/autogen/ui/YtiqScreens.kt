@@ -323,7 +323,7 @@ private fun ConnectCard(onOpenSettings: () -> Unit) {
         ) {
             Text(text = "Connect a YouTube account", color = YtText, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             Text(
-                text = "Connect a Gmail to see your channel's subscribers, views and videos here.",
+                text = "Connect a channel to see your stats.",
                 color = YtMuted, fontSize = 13.sp, textAlign = TextAlign.Center
             )
             Surface(onClick = onOpenSettings, shape = RoundedCornerShape(24.dp), color = YtAccent) {

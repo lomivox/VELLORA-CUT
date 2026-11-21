@@ -115,8 +115,8 @@ private fun findDuplicates(videos: List<ManagedVideo>): List<DuplicateGroup> {
             val reasons = LinkedHashSet<String>()
             if (sameTitle) reasons.add("Title bilkul ek jaisa")
             if (similar) reasons.add("Title milta-julta")
-            if (sameDesc) reasons.add("Description ek jaisi")
-            if (sameLength) reasons.add("Length is also the same (maybe the same video was uploaded again)")
+            if (sameDesc) reasons.add("Same description")
+            if (sameLength) reasons.add("Same length (possible re-upload)")
             val ri = find(i)
             val rj = find(j)
             if (ri != rj) parent[ri] = rj
@@ -163,7 +163,7 @@ fun YtiqVideoManagerScreen(
         return when (val t = YouTubeAuthManager.getFreshAccessToken(context, email)) {
             is YouTubeAuthManager.TokenResult.Success -> t.accessToken
             is YouTubeAuthManager.TokenResult.NeedsUserAction -> {
-                error = "This channel's permission is needed again — remove it in Settings and connect it again"
+                error = "Permission expired — reconnect the channel in Settings"
                 null
             }
             is YouTubeAuthManager.TokenResult.Error -> {
@@ -181,7 +181,7 @@ fun YtiqVideoManagerScreen(
             val t = token()
             if (t != null) {
                 if (uploadsId == null) {
-                    error = "The channel's video list was not found — open Home and come back"
+                    error = "Video list not loaded — open Home first"
                 } else {
                     when (val r = YouTubeVideoManager.listAll(t, uploadsId)) {
                         is YtResult.Ok -> videos = r.value
@@ -231,8 +231,8 @@ fun YtiqVideoManagerScreen(
             Text(
                 text = when {
                     showDuplicates && groups.isEmpty() -> "No duplicates found ✅ (${videos.size} videos checked)"
-                    showDuplicates -> "${groups.size} groups found • ${groups.sumOf { it.videos.size }} videos look the same. " +
-                        "Review both first, then delete the unneeded one."
+                    showDuplicates -> "${groups.size} groups • ${groups.sumOf { it.videos.size }} similar videos. " +
+                        "Review, then delete extras."
                     query.isBlank() -> "${videos.size} videos"
                     else -> "${filtered.size} / ${videos.size} videos mile"
                 },
@@ -249,7 +249,7 @@ fun YtiqVideoManagerScreen(
                 if (showDuplicates) {
                     if (groups.isNotEmpty()) {
                         item(key = "bulkAll") {
-                            ActionButton("🤖 Generate new titles for all groups (${groups.sumOf { it.videos.size }} videos)") {
+                            ActionButton("🤖 New titles for all groups (${groups.sumOf { it.videos.size }} videos)") {
                                 bulkGroups = groups.map { it.videos }
                             }
                         }
@@ -421,8 +421,8 @@ private fun BulkRetitleDialog(
                     }
                 }
             }
-            message = if (failed > 0) "⚠ AI did not return a new title for $failed videos — they were skipped; generate again or write them yourself"
-            else "Review them, edit what you want to change, then tap Apply"
+            message = if (failed > 0) "⚠ $failed videos got no new title — retry or edit by hand"
+            else "Review, edit, then tap Apply"
             busy = false
         }
     }
@@ -453,7 +453,7 @@ private fun BulkRetitleDialog(
             }
             val n = normText(t)
             if (n == normText(r.video.title) || n in others || !seen.add(n)) {
-                message = "⚠ The title is the same: \"${t.take(40)}\" — every video needs a different title"
+                message = "⚠ Duplicate title: \"${t.take(40)}\""
                 return
             }
         }
@@ -461,7 +461,7 @@ private fun BulkRetitleDialog(
             busy = true
             val token = tokenProvider()
             if (token == null) {
-                message = "⚠ Login not found — remove the channel in Settings and connect it again"
+                message = "⚠ Login missing — reconnect the channel in Settings"
                 busy = false
                 return@launch
             }
@@ -483,7 +483,7 @@ private fun BulkRetitleDialog(
             if (firstError == null) {
                 onDismiss()
             } else {
-                message = "⚠ ${updated.size} videos saved, the rest were not: $firstError"
+                message = "⚠ ${updated.size} saved, rest failed: $firstError"
             }
         }
     }
@@ -553,7 +553,7 @@ private fun BulkRetitleDialog(
             }
             if (rows.any { !it.kept }) {
                 ActionButton(
-                    if (busy) "Ruko…" else "💾 Apply (${rows.count { it.apply && !it.kept }} videos on YouTube)",
+                    if (busy) "Ruko…" else "💾 Apply (${rows.count { it.apply && !it.kept }})",
                     enabled = !busy, primary = true
                 ) { applyAll() }
             }
@@ -641,7 +641,7 @@ private fun EditVideoDialog(
             message = null
             val t = tokenProvider()
             if (t == null) {
-                message = "⚠ Login not found — remove the channel in Settings and connect it again"
+                message = "⚠ Login missing — reconnect the channel in Settings"
             } else {
                 when (val r = YouTubeVideoManager.update(t, video, title.trim(), description, tags)) {
                     is YtResult.Ok -> {
@@ -707,7 +707,7 @@ private fun EditVideoDialog(
             }
             val clipboard = LocalClipboardManager.current
             Text(
-                text = "ID: ${video.id}  •  ${fmtDuration(video.durationSec)}  •  tap = ID copy",
+                text = "ID: ${video.id}  •  ${fmtDuration(video.durationSec)}  •  tap to copy",
                 color = YtMuted, fontSize = 12.sp,
                 modifier = Modifier.clickable {
                     clipboard.setText(AnnotatedString(video.id))
@@ -749,7 +749,7 @@ private fun EditVideoDialog(
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
             title = { Text("Delete video?") },
-            text = { Text("\"${video.title}\" will be removed from YouTube permanently and cannot be recovered.") },
+            text = { Text("\"${video.title}\" will be permanently deleted from YouTube.") },
             confirmButton = {
                 TextButton(onClick = {
                     confirmDelete = false
@@ -758,7 +758,7 @@ private fun EditVideoDialog(
                         message = null
                         val t = tokenProvider()
                         if (t == null) {
-                            message = "⚠ Login not found — remove the channel in Settings and connect it again"
+                            message = "⚠ Login missing — reconnect the channel in Settings"
                         } else {
                             when (val r = YouTubeVideoManager.delete(t, video.id)) {
                                 is YtResult.Ok -> {

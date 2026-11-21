@@ -388,7 +388,7 @@ fun TimelineScreen(
             ) {
                 if (doneImages.isEmpty()) {
                     Text(
-                        text = "No images are ready yet — go to the Prompts screen and run Generate All first",
+                        text = "No images yet — run Generate All on the Prompts screen",
                         color = TextSecondary,
                         fontSize = 12.sp,
                         modifier = Modifier.align(Alignment.Center)
@@ -549,7 +549,7 @@ fun TimelineScreen(
                 }
                 SmallSliderSheet(
                     title = "Noise Reduction",
-                    subtitle = "Real FFmpeg denoiser (afftdn) — toggle on/off; the slider applies automatically when released",
+                    subtitle = "Noise reduction",
                     value = proj.noiseReductionPercent,
                     valueRange = 0..100,
                     valueLabel = { "$it%" },
@@ -577,7 +577,7 @@ fun TimelineScreen(
             currentProject?.let { proj ->
                 SmallSliderSheet(
                     title = "Volume",
-                    subtitle = "Real FFmpeg gain (volume filter) — applies automatically when you release the slider",
+                    subtitle = "Volume gain",
                     value = proj.volumePercent,
                     valueRange = 0..500,
                     valueLabel = { "$it%" },
@@ -613,7 +613,7 @@ fun TimelineScreen(
             currentProject?.let { proj ->
                 ChoiceBottomSheet(
                     title = "Sync Mode",
-                    subtitle = "How images sync with the duration",
+                    subtitle = "Image timing",
                     options = listOf(
                         ChoiceOption(
                             label = "Scale images",
@@ -647,7 +647,7 @@ fun TimelineScreen(
             currentProject?.let { proj ->
                 ChoiceBottomSheet(
                     title = "Transition",
-                    subtitle = "Transition style between two images — 10 real FFmpeg xfade transitions",
+                    subtitle = "Transition between images",
                     options = TransitionType.ALL.map { value ->
                         ChoiceOption(
                             label = TransitionType.label(value),
@@ -670,7 +670,7 @@ fun TimelineScreen(
             currentProject?.let { proj ->
                 ChoiceBottomSheet(
                     title = "Motion Effect",
-                    subtitle = "Live camera movement on each image — 10 real zoompan formulas",
+                    subtitle = "Camera movement per image",
                     options = MotionEffect.ALL.map { value ->
                         ChoiceOption(
                             label = MotionEffect.label(value),
@@ -754,7 +754,7 @@ fun TimelineScreen(
         if (showAudioSourceSheet) {
             ChoiceBottomSheet(
                 title = "Voice-Over",
-                subtitle = "Pick an audio file directly, or extract the audio from a video",
+                subtitle = "Pick an audio file, or extract it from a video",
                 options = listOf(
                     ChoiceOption(
                         label = "🎵 Audio File",
@@ -1380,7 +1380,7 @@ private fun EditDurationDialog(
         text = {
             Column {
                 Text(
-                    text = "Enter seconds (e.g. 4, 6, 10) — leave empty to set this image back to 'auto'",
+                    text = "Seconds (e.g. 4, 6, 10) — empty = auto",
                     color = TextSecondary,
                     fontSize = 11.sp
                 )
@@ -1599,7 +1599,7 @@ private fun CaptionsSheet(
             Text(text = "Captions", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = "Real Whisper AI transcription — what is spoken is what gets written",
+                text = "Whisper transcription",
                 color = TextSecondary,
                 fontSize = 11.sp
             )
@@ -1625,12 +1625,6 @@ private fun CaptionsSheet(
                     }
                 }
             }
-            Text(
-                text = "(only these two for now — more languages will be added later)",
-                color = TextSecondary,
-                fontSize = 10.sp,
-                modifier = Modifier.padding(top = 4.dp)
-            )
 
             Spacer(modifier = Modifier.height(12.dp))
             Text(text = "Font", color = TextSecondary, fontSize = 11.sp)
@@ -1682,7 +1676,7 @@ private fun CaptionsSheet(
                 Text(text = "⚠ $importFontError", color = Color(0xFFFF6B6B), fontSize = 11.sp)
             }
             Text(
-                text = "Download a font file (.ttf/.otf) or a .zip containing one, then import it here",
+                text = "Import a font (.ttf/.otf or .zip)",
                 color = TextSecondary,
                 fontSize = 10.sp,
                 modifier = Modifier.padding(top = 4.dp)

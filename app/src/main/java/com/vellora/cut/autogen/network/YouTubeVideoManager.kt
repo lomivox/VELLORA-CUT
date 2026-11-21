@@ -50,9 +50,9 @@ object YouTubeVideoManager {
         val msg = err?.optString("message").orEmpty()
         return when {
             reason.contains("quota", ignoreCase = true) -> "YouTube daily quota used up — resets about 12–1 PM Pakistan time"
-            r.code == 401 -> "Login expired — remove this channel in Settings and connect it again"
+            r.code == 401 -> "Login expired — reconnect the channel in Settings"
             reason.equals("insufficientPermissions", ignoreCase = true) || msg.contains("insufficient", ignoreCase = true) ->
-                "Edit/Delete permission was not granted. Remove this channel in Settings and connect it again (it will ask for the new permission)"
+                "Edit permission missing — reconnect the channel in Settings"
             reason.equals("forbidden", ignoreCase = true) -> "No permission to change this video (YouTube refused)"
             else -> YouTubeErrors.describe(r.code, r.body)
         }

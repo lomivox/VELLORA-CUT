@@ -277,7 +277,7 @@ fun YtiqThumbnailScreen(thumbs: SnapshotStateList<Bitmap>) {
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        YqNote("Describe the thumbnail idea and AI will create the picture.")
+        YqNote("Describe your thumbnail idea.")
         YqInput(value = idea, onChange = { idea = it }, hint = "Describe your thumbnail idea", modifier = Modifier.fillMaxWidth(), onSend = { generate() })
         YqButton(if (busy) "Generating…" else "Create", enabled = !busy && idea.isNotBlank()) { generate() }
         if (busy) YqBusy("Generating the image, please wait…")
@@ -386,7 +386,7 @@ fun YtiqResearchScreen(
             titles = r?.competitorTitles.orEmpty().take(10)
             note = when {
                 key.isBlank() -> "Add a YouTube API Key in Settings for competitor data."
-                r == null -> "Competitor data not found (check the key or your internet)."
+                r == null -> "Competitor data unavailable."
                 else -> null
             }
             if (competitorsMode && key.isNotBlank()) {
@@ -468,15 +468,15 @@ fun YtiqResearchScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         YqNote(
-            if (competitorsMode) "Write a topic and see which videos are ranking right now."
-            else "Write a keyword or topic to get real YouTube search suggestions."
+            if (competitorsMode) "Enter a topic to see what is ranking."
+            else "Enter a keyword or topic."
         )
         if (autoQuery.isNotBlank() && seed == autoQuery) {
             val p = profile
             YqNote(
                 (if (p != null && p.niche.isNotBlank()) "Your channel's topic: ${p.niche}\n" else "") +
-                    "These phrases were picked automatically from your channel's videos: " + autoQueries.joinToString("  •  ") +
-                    "\nYou can change them and search yourself — it will also follow your channel's language/country."
+                    "Picked from your channel's videos: " + autoQueries.joinToString("  •  ") +
+                    "\nEdit and search to use your own."
             )
         }
         YqInput(value = seed, onChange = { seed = it }, hint = "Search keywords…", modifier = Modifier.fillMaxWidth(), onSend = { search() })
@@ -490,7 +490,7 @@ fun YtiqResearchScreen(
                 if (viral.isNotEmpty()) {
                     YqCard {
                         YqTitle("🔥 Viral videos (last 30 days)")
-                        YqNote("Score = views ÷ channel subscribers. 5x means the video got 5 times more views than the channel's subscribers. Tap a video = play it in the app, 🤖 = AI learns its style and writes titles for you.")
+                        YqNote("Score = views ÷ subscribers. Tap to play · 🤖 for AI titles.")
                         viral.forEach { v ->
                             ViralRow(
                                 v = v,
@@ -514,7 +514,7 @@ fun YtiqResearchScreen(
                 if (bigChannels.isNotEmpty()) {
                     YqCard {
                         YqTitle("📺 Competitor channels like yours")
-                        YqNote("Channels closest to your size first, then bigger ones. Tap = open the channel.")
+                        YqNote("Closest to your size first. Tap to open.")
                         bigChannels.forEach { c ->
                             ChannelRow(c, ownSubscribers) {
                                 try {
@@ -625,11 +625,11 @@ fun YtiqOptimizeScreen(
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 YqButton("New video: Title, Tags and Upload", modifier = Modifier.fillMaxWidth()) { onOpenCreate() }
-                YqNote("The title score is an estimate (length, number, punctuation). It is not YouTube's official score.")
+                YqNote("Title score is an estimate, not YouTube's.")
                 if (dash.loading && dash.videos.isEmpty()) YqBusy("Loading videos…")
                 dash.error?.let { Text(text = it, color = YqRed, fontSize = 14.sp) }
                 if (!dash.loading && dash.videos.isEmpty() && dash.error == null) {
-                    YqNote("To see videos, first connect a YouTube channel from Account Settings in the menu.")
+                    YqNote("Connect a channel in Account Settings first.")
                 }
             }
         }
@@ -678,7 +678,7 @@ fun YtiqSubscribersScreen(dash: YtiqDashboard, onAsk: (String) -> Unit) {
     ) {
         if (ch == null) {
             if (dash.loading) YqBusy("Loading channel data…")
-            else YqNote("No channel data. Connect a YouTube channel from Account Settings in the menu.")
+            else YqNote("No channel data. Connect a channel in Account Settings.")
             return@Column
         }
         YqCard {
@@ -695,7 +695,7 @@ fun YtiqSubscribersScreen(dash: YtiqDashboard, onAsk: (String) -> Unit) {
                     Box(modifier = Modifier.fillMaxWidth(frac).height(8.dp).clip(RoundedCornerShape(8.dp)).background(YtAccent))
                 }
                 Spacer(modifier = Modifier.height(6.dp))
-                YqNote("Agla goal ${formatCount(next)} — ${formatCount((next - ch.subscribers).coerceAtLeast(0L))} baqi")
+                YqNote("Next goal ${formatCount(next)} — ${formatCount((next - ch.subscribers).coerceAtLeast(0L))} to go")
             }
         }
         YqCard {
@@ -719,11 +719,11 @@ fun YtiqSubscribersScreen(dash: YtiqDashboard, onAsk: (String) -> Unit) {
                 if (best != null) YqNote("Best: ${best.title} (${formatCount(best.views)})")
                 computePerformance(vids)?.let {
                     val sign = if (it.percent >= 0) "+" else ""
-                    YqNote("Latest video is $sign${it.percent}% vs your average views (rank ${it.rank}/${it.outOf})")
+                    YqNote("Latest: $sign${it.percent}% vs average (rank ${it.rank}/${it.outOf})")
                 }
             }
         }
-        YqButton("Subscribers kaise barhayen? (AI Coach)", modifier = Modifier.fillMaxWidth()) {
+        YqButton("How to grow subscribers? (AI Coach)", modifier = Modifier.fillMaxWidth()) {
             onAsk("Look at my channel's data and tell me how to grow subscribers, with 5 practical steps")
         }
         Spacer(modifier = Modifier.height(8.dp))

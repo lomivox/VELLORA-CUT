@@ -39,7 +39,7 @@ class YtiqDashboard {
             val token = when (val t = YouTubeAuthManager.getFreshAccessToken(context, email)) {
                 is YouTubeAuthManager.TokenResult.Success -> t.accessToken
                 is YouTubeAuthManager.TokenResult.NeedsUserAction -> {
-                    fail(email, "This account's YouTube permission is needed again — remove it in Settings and connect it again")
+                    fail(email, "Permission expired — reconnect the channel in Settings")
                     return
                 }
                 is YouTubeAuthManager.TokenResult.Error -> {

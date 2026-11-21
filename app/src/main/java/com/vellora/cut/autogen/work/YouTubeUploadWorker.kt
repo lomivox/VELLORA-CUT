@@ -85,7 +85,7 @@ class YouTubeUploadWorker(
             when (val t = YouTubeAuthManager.getFreshAccessToken(applicationContext, accountKey)) {
                 is YouTubeAuthManager.TokenResult.Success -> t.accessToken
                 is YouTubeAuthManager.TokenResult.NeedsUserAction ->
-                    throw IllegalStateException("YouTube permission is needed again — remove this channel in Settings and connect it again")
+                    throw IllegalStateException("Permission expired — reconnect the channel in Settings")
                 is YouTubeAuthManager.TokenResult.Error -> throw IOException(t.message)
             }
         }

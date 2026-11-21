@@ -45,7 +45,7 @@ fun UploadProgressCard(entityId: Long, onCancel: () -> Unit) {
                 OutlinedButton(onClick = onCancel) { Text(text = "Reset", color = TextPrimary) }
             }
             info?.state == WorkInfo.State.ENQUEUED || info?.state == WorkInfo.State.BLOCKED -> {
-                Text(text = "⏳ Waiting for internet / the system — the upload starts as soon as it is available", color = TextSecondary, fontSize = 12.sp)
+                Text(text = "⏳ Waiting for internet…", color = TextSecondary, fontSize = 12.sp)
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedButton(onClick = onCancel) { Text(text = "✖ Cancel upload", color = Color(0xFFFF6B6B)) }
             }
@@ -66,13 +66,13 @@ fun UploadProgressCard(entityId: Long, onCancel: () -> Unit) {
                     Text(text = "Remaining: ${UploadFormat.bytes((total - sent).coerceAtLeast(0L))}", color = TextSecondary, fontSize = 12.sp)
                     if (speed > 0) {
                         Text(
-                            text = "Speed: ${UploadFormat.bytes(speed)}/s  •  ETA: ${UploadFormat.duration(eta)} left",
+                            text = "${UploadFormat.bytes(speed)}/s  •  ${UploadFormat.duration(eta)} left",
                             color = TextSecondary, fontSize = 12.sp
                         )
                     }
                 }
                 Spacer(modifier = Modifier.height(6.dp))
-                Text(text = "The upload keeps running even if you close the app.", color = TextSecondary, fontSize = 11.sp)
+                Text(text = "Keeps running if you close the app.", color = TextSecondary, fontSize = 11.sp)
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedButton(onClick = onCancel) { Text(text = "✖ Cancel upload", color = Color(0xFFFF6B6B)) }
             }

@@ -94,7 +94,7 @@ fun PromptPasteScreen(
 
                 if (!credentials.hasCredentials()) {
                     Text(
-                        text = "⚠️ To generate prompts from audio, first add a Cloudflare account in Settings",
+                        text = "⚠️ Add a Cloudflare account in Settings",
                         color = TextSecondary,
                         fontSize = 11.sp
                     )
@@ -118,7 +118,7 @@ fun PromptPasteScreen(
                                 audioRunning && stage == GeneratePromptsFromAudioWorker.STAGE_TRANSCRIBING ->
                                     "Listening to the voice-over…"
                                 audioRunning -> "Writing prompts… ($doneCount/$totalCount)"
-                                existingPrompts.isNotEmpty() -> "🎙️ Regenerate prompts from audio (replaces the current list)"
+                                existingPrompts.isNotEmpty() -> "🎙️ Regenerate from audio (replaces list)"
                                 else -> "🎙️ Generate prompts from audio"
                             }
                         )
@@ -188,7 +188,7 @@ fun PromptPasteScreen(
                     if (isRunning) {
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "Running in the background — you can leave this screen",
+                            text = "Runs in the background",
                             color = TextSecondary,
                             fontSize = 11.sp
                         )

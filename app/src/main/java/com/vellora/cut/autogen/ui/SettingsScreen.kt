@@ -98,8 +98,8 @@ fun SettingsScreen(onBack: () -> Unit) {
             Text(text = if (workerMode) "AI Settings" else "Cloudflare AI Accounts", color = CyanPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = if (workerMode) "Cloudflare AI and YouTube research keys are kept on the server — nothing to enter here." else "These credentials are stored only on this phone, encrypted. " +
-                    "Add more than one account — when the daily quota runs out, the next account is used automatically.",
+                text = if (workerMode) "Keys are managed on the server." else "Stored encrypted on this phone. " +
+                    "Add several accounts — the next is used when a quota ends.",
                 color = TextSecondary,
                 fontSize = 12.sp
             )
@@ -164,9 +164,9 @@ fun SettingsScreen(onBack: () -> Unit) {
                 Text(text = "Gemini API Keys (used first)", color = CyanPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "For Shorts Metadata, Gemini 2.5 listens to the video's audio and looks at its frames, so the title/description/tags come out much better. " +
-                        "Add more than one key: each key is tried twice, then the next key. " +
-                        "If no key works, the Cloudflare accounts above are used as before.",
+                    text = "Used first for Shorts Metadata (better results). " +
+                        "Add several keys; each is tried twice. " +
+                        "Falls back to Cloudflare if none work.",
                     color = TextSecondary,
                     fontSize = 12.sp
                 )
@@ -229,8 +229,8 @@ fun SettingsScreen(onBack: () -> Unit) {
                 Text(text = "YouTube Data API Key (optional)", color = CyanPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "For the Shorts Metadata tool — to look at the real keywords of videos already doing well on this topic " +
-                        "and research better. If left empty, YouTube's free autocomplete is used instead.",
+                    text = "Used for keyword research. " +
+                        "Optional — empty uses free autocomplete.",
                     color = TextSecondary,
                     fontSize = 12.sp
                 )
@@ -267,8 +267,8 @@ fun SettingsScreen(onBack: () -> Unit) {
                 Text(text = "Channel Name", color = CyanPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "The Shorts Metadata tool adds a line like \"Subscribe to <name>\" with this name at the end of every description — " +
-                        "write it once here and it is added to every video.",
+                    text = "Added to every description as \"Subscribe to <name>\"." +
+                        "",
                     color = TextSecondary,
                     fontSize = 12.sp
                 )
@@ -304,8 +304,8 @@ fun SettingsScreen(onBack: () -> Unit) {
                 Text(text = "Channel Style (template)", color = CyanPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Write your channel's rules once and they apply to every video. For example: the title should always follow the style \"Surah ... | Beautiful Recitation\"; " +
-                        "the description should not mention any academy or course.",
+                    text = "Rules applied to every video, e.g. titles like \"Surah ... | Beautiful Recitation\"; " +
+                        "no academy or course mentions.",
                     color = TextSecondary,
                     fontSize = 12.sp
                 )
@@ -323,7 +323,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 OutlinedTextField(
                     value = fixedTags,
                     onValueChange = { fixedTags = it; styleSavedMessage = null },
-                    label = { Text("Fixed tags (comma-separated) — added to every video") },
+                    label = { Text("Fixed tags (comma-separated)") },
                     minLines = 2,
                     maxLines = 5,
                     modifier = Modifier.fillMaxWidth(),

@@ -39,7 +39,7 @@ object YtiqAi {
         val accounts = try { store?.accounts.orEmpty() } catch (e: Exception) { emptyList() }
         val geminiKeys = try { store?.geminiKeys.orEmpty() } catch (e: Exception) { emptyList() }
         if (accounts.isEmpty() && geminiKeys.isEmpty()) {
-            return@withContext YtiqAiResult.Fail("First add a Gemini key or a Cloudflare account in Settings")
+            return@withContext YtiqAiResult.Fail("AI is not set up — check Settings")
         }
         var last = "The AI could not answer"
         // Gemini first: every key gets 2 real tries before the next key; Cloudflare accounts are the backup.

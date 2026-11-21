@@ -92,9 +92,9 @@ private fun rememberChannelConnect(onError: (String?) -> Unit): () -> Unit {
 /** A readable reason for a failed Google sign-in, plus the exact package + SHA-1 this app presents to Google. */
 private fun describeSignInFailure(context: android.content.Context, code: Int): String {
     val why = when (code) {
-        10 -> "Google could not find this app's (package + SHA-1) in the Cloud Console. Create an Android OAuth client with both values below."
-        7 -> "Google reported a network error. If your internet is fine, the most likely cause is that this app's (package + SHA-1) is not registered in the Cloud Console. Check both values below."
-        12500 -> "Google rejected the sign-in. Check the OAuth client and the consent screen (Test users)."
+        10 -> "App not registered with Google — add the package and SHA-1 below to an Android OAuth client."
+        7 -> "Network error, or the app is not registered — check the package and SHA-1 below."
+        12500 -> "Sign-in rejected — check the OAuth client and Test users."
         else -> "Sign-in failed."
     }
     return "Sign-in failed (code: $code)\n$why\n" + AppIdentity.summary(context)
@@ -144,8 +144,8 @@ fun YouTubeAccountsSection() {
     Text(text = "YouTube Accounts (Upload)", color = CyanPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
     Spacer(modifier = Modifier.height(4.dp))
     Text(
-        text = "Connect as many Gmail accounts / channels as you like. When uploading, pick the channel you want — " +
-            "the video goes to that channel.",
+        text = "Connect any number of channels. " +
+            "Pick one when uploading.",
         color = TextSecondary,
         fontSize = 12.sp
     )
@@ -175,8 +175,8 @@ fun YouTubeAccountsSection() {
         )
     }
     Text(
-        text = "Google's own screen opens where you choose the channel (Brand channels too). " +
-            "To add another channel, tap again and choose a different channel there.",
+        text = "Google opens a screen to choose the channel. " +
+            "Tap again to add another.",
         color = TextSecondary,
         fontSize = 11.sp
     )
@@ -187,7 +187,7 @@ fun YouTubeAccountsSection() {
         modifier = Modifier.fillMaxWidth(),
         colors = ButtonDefaults.buttonColors(containerColor = SurfaceVariant)
     ) {
-        Text(text = "Old method: the Gmail's default channel", color = TextPrimary, fontSize = 12.sp)
+        Text(text = "Default channel only (old method)", color = TextPrimary, fontSize = 12.sp)
     }
     error?.let {
         Spacer(modifier = Modifier.height(6.dp))
@@ -203,8 +203,8 @@ fun YouTubeAccountsSection() {
     }
     Spacer(modifier = Modifier.height(6.dp))
     Text(
-        text = "Note: a Gmail gives its own channel (and a Brand channel, if Google shows it). " +
-            "For a different channel, connect with the Gmail that owns that channel.",
+        text = "Each Gmail gives its own channel (plus Brand channels, if shown)." +
+            "",
         color = TextSecondary,
         fontSize = 11.sp
     )

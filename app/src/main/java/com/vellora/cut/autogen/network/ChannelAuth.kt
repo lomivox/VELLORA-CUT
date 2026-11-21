@@ -224,7 +224,7 @@ object ChannelAuth {
                 val clientId = clientId(context)
                     ?: return@withContext YouTubeAuthManager.TokenResult.Error("Google Client ID is missing")
                 val refresh = secure(context).getString("rt_$key", null)
-                    ?: return@withContext YouTubeAuthManager.TokenResult.Error("No login found for this channel — remove it and connect again")
+                    ?: return@withContext YouTubeAuthManager.TokenResult.Error("Login missing — reconnect the channel")
                 val form = FormBody.Builder()
                     .add("client_id", clientId)
                     .add("refresh_token", refresh)
@@ -234,7 +234,7 @@ object ChannelAuth {
                     val body = r.body?.string().orEmpty()
                     if (!r.isSuccessful) {
                         val msg = if (body.contains("invalid_grant")) {
-                            "This channel's permission has expired — remove it and connect again"
+                            "Permission expired — reconnect the channel"
                         } else {
                             "Could not get a token (${r.code}): ${errorText(body)}"
                         }

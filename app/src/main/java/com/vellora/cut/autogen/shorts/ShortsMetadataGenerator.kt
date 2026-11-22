@@ -52,6 +52,8 @@ object ShortsMetadataGenerator {
         accounts: List<CloudflareAccount>,
         language: String,
         topicHint: String? = null,
+        /** Re-use the transcript saved with an earlier run (no new listening) — used to rewrite in another language. */
+        savedTranscript: String? = null,
         onStatusChange: (String) -> Unit
     ): Result<ShortsMetadataResult> = withContext(Dispatchers.IO) {
         val store = SecureCredentialStore(context)
@@ -62,7 +64,8 @@ object ShortsMetadataGenerator {
             )
         }
         // When only a typed topic/title is given (no video), that text is the authority on what the video is about.
-        val hint = topicHint?.trim().orEmpty().ifBlank { if (videoUri == null) manualTopic?.trim().orEmpty() else "" }
+        val reuse = savedTranscript?.trim().orEmpty()
+        val hint = topicHint?.trim().orEmpty().ifBlank { if (videoUri == null && reuse.isBlank()) manualTopic?.trim().orEmpty() else "" }
 
         var transcript = ""
         var audioFile: File? = null
@@ -87,6 +90,9 @@ object ShortsMetadataGenerator {
             }
             // A few frames let Gemini SEE the video (essential when nobody speaks).
             if (geminiKeys.isNotEmpty()) frames = VideoFrameSampler.sample(context, videoUri)
+        } else if (reuse.isNotBlank()) {
+            // Rewriting an earlier result: the saved transcript/summary is used as it is.
+            transcript = reuse
         } else if (!manualTopic.isNullOrBlank()) {
             // Person typed their own topic — it is used exactly like a transcript from here on.
             transcript = manualTopic
@@ -110,11 +116,16 @@ object ShortsMetadataGenerator {
             hint.isNotBlank() -> hint.split(Regex("\\s+")).take(8).joinToString(" ")
             else -> spokenText.split(Regex("\\s+")).filter { it.isNotBlank() }.take(6).joinToString(" ")
         }
-        if (hint.isBlank() && !hasSpeech && canGeminiPerceive) {
+        if (hint.isBlank() && geminiKeys.isNotEmpty() && (canGeminiPerceive || hasSpeech)) {
             onStatusChange("researching_keywords")
-            val topicPrompt = "Look at the attached video frames (and listen to the audio if it is attached). " +
-                "Reply with ONLY a short search topic of 3 to 6 words that a YouTube viewer would type to find " +
-                "this video. No quotes, no explanation, no punctuation."
+            val topicPrompt = buildString {
+                append("Work out what this video is REALLY about: its main subject and its message. ")
+                if (audioForGemini != null) append("The audio is attached — listen to it; it is more reliable than the machine transcript. ")
+                if (frames.isNotEmpty()) append("Sample frames are attached. ")
+                if (hasSpeech) append("Machine transcript (may contain errors): \"${spokenText.take(1500)}\". ")
+                append("Reply with ONLY a short search topic of 3 to 6 words that a YouTube viewer would type to find this video. ")
+                append("It must match the video's real subject and angle. No quotes, no explanation, no punctuation.")
+            }
             val topicOut = runGemini(geminiKeys, topicPrompt, audioForGemini, frames)
             topicOut.text?.lineSequence()?.firstOrNull { it.isNotBlank() }?.trim()?.take(80)?.let { if (it.isNotBlank()) seed = it }
         }
@@ -229,9 +240,13 @@ object ShortsMetadataGenerator {
         val parsed = cleanParsed(parseResponse(finalRaw))
         val title = if (parsed.first == "Untitled" && hint.isNotBlank()) hint.take(100) else parsed.first
         val descriptionWithHashtags = appendTopHashtagsToDescription(parsed.second, parsed.fourth)
+        // Keep what the AI understood next to the transcript, so a later rewrite (e.g. in English) needs no re-listening.
+        val storedTranscript = if (parsed.summary.isNotBlank() && reuse.isBlank()) {
+            (transcript + (if (transcript.isNotBlank()) "\n\n" else "") + "[Summary] " + parsed.summary).trim()
+        } else transcript
         Result.success(
             ShortsMetadataResult(
-                transcript = transcript,
+                transcript = storedTranscript,
                 researchedKeywords = keywords,
                 title = title,
                 description = descriptionWithHashtags,
@@ -395,13 +410,14 @@ object ShortsMetadataGenerator {
         hasVisuals: Boolean
     ): String {
         val keywordsBlock = if (keywords.isNotEmpty()) {
-            "Real keywords/tags pooled from currently top-ranking YouTube videos on this exact topic " +
-                "(most commonly used first — favor the ones near the top): ${keywords.take(35).joinToString(", ")}"
+            "Keyword ideas pooled from top-ranking YouTube videos on a similar topic. Treat them as vocabulary ONLY: " +
+                "use a keyword only if it fits what THIS video actually says, and drop any that change its meaning, " +
+                "angle or stance: ${keywords.take(30).joinToString(", ")}"
         } else {
             "(no extra keyword data available)"
         }
         val competitorBlock = if (competitorTitles.isNotEmpty()) {
-            "\nTitles of those currently top-ranking competitor videos (for tone/style reference only — do not copy):\n" +
+            "\nTitles of top-ranking videos on a similar topic (format/tone reference only — their angle may differ from this video; do not copy):\n" +
                 competitorTitles.take(8).joinToString("\n") { "- $it" }
         } else ""
 
@@ -465,6 +481,12 @@ object ShortsMetadataGenerator {
             $keywordsBlock
             $competitorBlock
 
+            UNDERSTAND BEFORE WRITING: work out what the video actually says and its STANCE (for, against, how-to,
+            story, news, advice...). Everything you write must match that stance and angle. Example: a video that
+            explains the BENEFITS of mobile phones must never be titled or tagged around "mobile addiction", even if
+            that is the most common search. Keyword lists and competitor titles never override what the video says.
+            Be specific: use the concrete benefit, detail or story from this video, not generic wording.
+
             FIRST decide the real subject of the video. Ignore opening formulas such as "Audhu billah", "Bismillah",
             greetings or intros when deciding the topic — for example in a Quran recitation video, identify which
             Surah/Ayat is actually being recited and make THAT the topic. Never use an opening formula or a greeting as the Title.
@@ -502,6 +524,7 @@ object ShortsMetadataGenerator {
             HASHTAGS — 6-10 space-separated #hashtags, no spaces inside a tag, mixing broad and specific.
 
             Reply in EXACTLY this format, nothing else, no extra commentary, no markdown, no asterisks:
+            SUMMARY: <2-3 plain English sentences: what the video says, and its stance — for the creator's reference>
             TITLE: <title>
             DESCRIPTION: <the full multi-paragraph description>
             TAGS: <tags>
@@ -552,11 +575,11 @@ object ShortsMetadataGenerator {
             .distinctBy { it.lowercase() }.take(15).joinToString(", ")
         val hashtags = p.fourth.split(Regex("\\s+")).map { it.trim() }.filter { it.isNotBlank() }
             .map { if (it.startsWith("#")) it else "#$it" }.distinctBy { it.lowercase() }.take(10).joinToString(" ")
-        return Parsed(first = p.first, second = description, third = tags, fourth = hashtags)
+        return Parsed(first = p.first, second = description, third = tags, fourth = hashtags, summary = p.summary)
     }
 
     /** (title, description, tags, hashtags) */
-    private data class Parsed(val first: String, val second: String, val third: String, val fourth: String)
+    private data class Parsed(val first: String, val second: String, val third: String, val fourth: String, val summary: String = "")
 
     private fun parseResponse(raw: String): Parsed {
         fun extract(marker: String, nextMarkers: List<String>): String {
@@ -573,7 +596,8 @@ object ShortsMetadataGenerator {
             return raw.substring(afterMarker, endIdx).trim().trim('*', '#', ' ')
         }
 
-        val allMarkers = listOf("TITLE:", "DESCRIPTION:", "TAGS:", "HASHTAGS:")
+        val allMarkers = listOf("SUMMARY:", "TITLE:", "DESCRIPTION:", "TAGS:", "HASHTAGS:")
+        val summary = extract("SUMMARY:", allMarkers - "SUMMARY:")
         val title = extract("TITLE:", allMarkers - "TITLE:")
         val description = extract("DESCRIPTION:", allMarkers - "DESCRIPTION:")
         val tags = extract("TAGS:", allMarkers - "TAGS:")
@@ -583,7 +607,8 @@ object ShortsMetadataGenerator {
             first = title.ifBlank { "Untitled" },
             second = description,
             third = tags,
-            fourth = hashtags
+            fourth = hashtags,
+            summary = summary
         )
     }
 }

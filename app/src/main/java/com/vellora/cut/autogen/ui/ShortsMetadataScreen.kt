@@ -206,7 +206,14 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
         }
     }
 
-    suspend fun runGenerationFlow(entity: ShortMetadataEntity, videoUriForGen: String?, manualTopic: String?, topicHint: String? = null) {
+    suspend fun runGenerationFlow(
+        entity: ShortMetadataEntity,
+        videoUriForGen: String?,
+        manualTopic: String?,
+        topicHint: String? = null,
+        savedTranscript: String? = null,
+        allowAutoUpload: Boolean = true
+    ) {
         val accounts = SecureCredentialStore(context).accounts
         if (accounts.isEmpty() && SecureCredentialStore(context).geminiKeys.isEmpty()) {
             errorMessage = "AI is not set up — check Settings"
@@ -226,12 +233,13 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
                 accounts = accounts,
                 language = outputLanguage,
                 topicHint = topicHint,
+                savedTranscript = savedTranscript,
                 onStatusChange = {
                     statusText = it
-                    if (it == "generating_gemini") engineNote = "✨ Gemini ne likha"
+                    if (it == "generating_gemini") engineNote = "✨ Written by Gemini"
                     else if (it.startsWith("generating_cloudflare")) {
                         val reason = it.substringAfter(":", "").trim()
-                        engineNote = "⚠ Gemini did not work" + (if (reason.isNotBlank()) " ($reason)" else "") + " — backup (Cloudflare) ne likha"
+                        engineNote = "⚠ Gemini did not work" + (if (reason.isNotBlank()) " ($reason)" else "") + " — written by the backup (Cloudflare)"
                     } else if (it == "generating") engineNote = "Cloudflare responded (no Gemini key saved)"
                 }
             )
@@ -250,7 +258,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
                 dao.update(updated)
                 activeProject = updated
 
-                if (autoUploadEnabled && updated.videoUri.isNotBlank()) {
+                if (allowAutoUpload && autoUploadEnabled && updated.videoUri.isNotBlank()) {
                     isWorking = true
                     statusText = "uploading"
                     updated = updated.copy(status = ShortMetadataStatus.UPLOADING)
@@ -766,6 +774,12 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
                     onRetry = { retry(shownProject) },
                     onSaveEdit = { edited -> scope.launch { dao.update(edited); activeProject = edited } },
                     onAttachVideo = { attachTarget = it; attachPicker.launch("video/*") },
+                    onRegenerate = { lang ->
+                        scope.launch {
+                            outputLanguage = lang
+                            runGenerationFlow(shownProject, null, null, null, savedTranscript = shownProject.transcript, allowAutoUpload = false)
+                        }
+                    },
                     onCancelUpload = {
                         scope.launch {
                             com.vellora.cut.autogen.work.YouTubeUploadWorker.cancel(context, shownProject.id)
@@ -930,6 +944,7 @@ private fun ResultCard(
     onRetry: () -> Unit,
     onSaveEdit: (ShortMetadataEntity) -> Unit,
     onAttachVideo: (ShortMetadataEntity) -> Unit,
+    onRegenerate: (String) -> Unit,
     onCancelUpload: () -> Unit
 ) {
     val context = LocalContext.current
@@ -981,6 +996,18 @@ private fun ResultCard(
         Spacer(modifier = Modifier.height(10.dp))
         CopyableField(context, "Hashtags", project.generatedHashtags.orEmpty())
 
+        if (canEdit && !project.transcript.isNullOrBlank()) {
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(text = "🔁 Rewrite from the same video in:", color = TextSecondary, fontSize = 12.sp)
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("English", "Urdu", "Roman Urdu").forEach { lang ->
+                    OutlinedButton(onClick = { onRegenerate(lang) }, shape = RoundedCornerShape(12.dp)) {
+                        Text(text = lang, color = TextPrimary, fontSize = 12.sp)
+                    }
+                }
+            }
+        }
         if (canEdit) {
             Spacer(modifier = Modifier.height(10.dp))
             if (!editing) {

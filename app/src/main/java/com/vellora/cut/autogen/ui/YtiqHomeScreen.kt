@@ -84,11 +84,11 @@ enum class YtiqScreen(val label: String, val icon: String) {
 }
 
 private val YtiqBottomTabs = listOf(
-    YtiqScreen.Home, YtiqScreen.Optimize, YtiqScreen.Research, YtiqScreen.Thumbnails, YtiqScreen.Coach
+    YtiqScreen.Home, YtiqScreen.Optimize, YtiqScreen.Research, YtiqScreen.Videos, YtiqScreen.Thumbnails
 )
 
 /**
- * Start screen of the YTIQ app: bottom bar (Home, Optimize, Research, Thumbnails, Coach) plus a side menu
+ * Start screen of the YTIQ app: bottom bar (Home, Optimize, Research, My Videos, Thumbnails) plus a side menu
  * with the other tools. Everything shows the real channel (YouTube login) and real AI (Cloudflare accounts from Settings).
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -198,6 +198,7 @@ fun YtiqHomeScreen() {
                         Spacer(modifier = Modifier.height(12.dp))
                         YtiqDrawerItem("🏠", "Home", screen == YtiqScreen.Home) { go(YtiqScreen.Home) }
                         YtiqDrawerItem("📈", "Optimize", screen == YtiqScreen.Optimize) { go(YtiqScreen.Optimize) }
+                        YtiqDrawerItem("💬", "AI Coach", screen == YtiqScreen.Coach) { go(YtiqScreen.Coach) }
                         YtiqDrawerItem("✏️", "New Chat", false) {
                             coach.reset()
                             go(YtiqScreen.Coach)

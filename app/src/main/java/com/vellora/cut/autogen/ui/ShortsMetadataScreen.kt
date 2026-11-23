@@ -82,6 +82,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
     // The connected YouTube account (channel) this upload goes to; picked right on this screen.
     var uploadAccountEmail by remember { mutableStateOf(com.vellora.cut.autogen.network.YouTubeAccounts.selectedEmail(context)) }
     // Optional custom thumbnail for the next upload (set on YouTube after the video is up).
+    remember(context) { com.vellora.cut.autogen.memory.ChannelMemory.init(context) }
     var thumbnailUri by remember { mutableStateOf<Uri?>(null) }
     val thumbnailPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -257,6 +258,11 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
                 )
                 dao.update(updated)
                 activeProject = updated
+                com.vellora.cut.autogen.memory.ChannelMemory.recordGeneration(
+                    updated.id, outputLanguage,
+                    if (engineNote.startsWith("✨")) "gemini" else "cloudflare",
+                    meta.title, meta.description, meta.tags
+                )
 
                 if (allowAutoUpload && autoUploadEnabled && updated.videoUri.isNotBlank()) {
                     isWorking = true
@@ -772,7 +778,18 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
                 ResultCard(
                     project = shownProject,
                     onRetry = { retry(shownProject) },
-                    onSaveEdit = { edited -> scope.launch { dao.update(edited); activeProject = edited } },
+                    onSaveEdit = { edited ->
+                        scope.launch {
+                            com.vellora.cut.autogen.memory.ChannelMemory.recordEdit(
+                                edited.id,
+                                shownProject.generatedTitle, edited.generatedTitle,
+                                shownProject.generatedDescription, edited.generatedDescription,
+                                shownProject.generatedTags, edited.generatedTags
+                            )
+                            dao.update(edited)
+                            activeProject = edited
+                        }
+                    },
                     onAttachVideo = { attachTarget = it; attachPicker.launch("video/*") },
                     onRegenerate = { lang ->
                         scope.launch {

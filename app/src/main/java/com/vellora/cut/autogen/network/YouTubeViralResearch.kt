@@ -1,5 +1,9 @@
 package com.vellora.cut.autogen.network
 
+import com.vellora.cut.autogen.memory.SearchCache
+import com.vellora.cut.autogen.memory.ChannelMemory
+import com.vellora.cut.autogen.data.SecureCredentialStore
+import com.vellora.cut.BuildConfig
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -76,6 +80,7 @@ object YouTubeViralResearch {
         if (apiKey.isBlank()) return Outcome(null, "YouTube API key is missing")
         val qs = queries.map { it.trim() }.filter { it.isNotBlank() }.distinct().take(3)
         if (qs.isEmpty()) return Outcome(null, "Enter a topic")
+        qs.forEach { ChannelMemory.recordSearch(it, "viral") }
         return try {
             val perQuery = maxOf(10, maxTotal / qs.size)
             val ids = LinkedHashSet<String>()
@@ -143,6 +148,7 @@ object YouTubeViralResearch {
      */
     fun similarChannels(query: String, apiKey: String, ownSubs: Long?, options: Options): Outcome {
         if (apiKey.isBlank()) return Outcome(null, "YouTube API key is missing")
+        ChannelMemory.recordSearch(query, "channels")
         return try {
             val url = "https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&order=relevance&maxResults=25" +
                 "&q=${URLEncoder.encode(query.take(100), "UTF-8")}" + regionLang(options) + "&key=$apiKey"
@@ -195,7 +201,8 @@ object YouTubeViralResearch {
             "?part=snippet&type=video&order=${o.order}&maxResults=$max" +
             "&publishedAfter=${URLEncoder.encode(after, "UTF-8")}" +
             "&q=${URLEncoder.encode(topic, "UTF-8")}" + regionLang(o) + "&key=$apiKey"
-        val items = get(url).optJSONArray("items") ?: return emptyList()
+        // "after" changes every second, so the saved answer is keyed by the day instead.
+        val items = get(url, "search|$topic|${o.order}|$max|${after.take(10)}${regionLang(o)}").optJSONArray("items") ?: return emptyList()
         return (0 until items.length()).mapNotNull { i ->
             items.optJSONObject(i)?.optJSONObject("id")?.optString("videoId")?.takeIf { it.isNotBlank() }
         }
@@ -235,12 +242,26 @@ object YouTubeViralResearch {
         return letters > 0 && foreign.toDouble() / letters >= 0.3
     }
 
-    private fun get(url: String): JSONObject {
-        client.newCall(Request.Builder().url(url).build()).execute().use { response ->
+    private fun get(url: String, cacheKey: String? = null, ttlMs: Long = 6 * 3600_000L): JSONObject {
+        val key = "vr|" + (cacheKey ?: url.replace(Regex("[&?]key=[^&]*"), ""))
+        SearchCache.get(key, ttlMs)?.let { return JSONObject(it) }
+        val request = if (url.contains("key=" + SecureCredentialStore.WORKER_YT_KEY)) {
+            // Server mode: the Pages backend adds the real YouTube key itself.
+            val path = url.removePrefix("https://www.googleapis.com/youtube/v3/")
+                .replace("&key=" + SecureCredentialStore.WORKER_YT_KEY, "")
+            Request.Builder()
+                .url(BuildConfig.WORKER_URL.trimEnd('/') + "/yt/" + path)
+                .addHeader("X-App-Key", BuildConfig.WORKER_APP_KEY)
+                .build()
+        } else {
+            Request.Builder().url(url).build()
+        }
+        client.newCall(request).execute().use { response ->
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
                 throw ApiError(YouTubeErrors.describe(response.code, body))
             }
+            SearchCache.put(key, body)
             return JSONObject(body)
         }
     }

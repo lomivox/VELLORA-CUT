@@ -1,5 +1,6 @@
 package com.vellora.cut.autogen.ui
 
+import com.vellora.cut.autogen.memory.ChannelMemory
 import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -57,7 +58,11 @@ class YtiqDashboard {
             if (uploads != null) {
                 when (val v = YouTubeChannelApi.recentVideos(token, uploads)) {
                     is YtResult.Fail -> { fail(email, v.message); return }
-                    is YtResult.Ok -> if (current == email) videos = v.value
+                    is YtResult.Ok -> if (current == email) {
+                        videos = v.value
+                        ChannelMemory.init(context)
+                        ChannelMemory.recordChannelVideos(email, v.value)
+                    }
                 }
             }
             writeCache(context, email)

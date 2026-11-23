@@ -1,5 +1,6 @@
 package com.vellora.cut.autogen.shorts
 
+import com.vellora.cut.autogen.memory.ChannelMemory
 import android.content.Context
 import com.vellora.cut.autogen.data.CloudflareAccount
 import com.vellora.cut.autogen.data.SecureCredentialStore
@@ -64,6 +65,7 @@ object ShortsMetadataGenerator {
             )
         }
         // When only a typed topic/title is given (no video), that text is the authority on what the video is about.
+        ChannelMemory.init(context)
         val reuse = savedTranscript?.trim().orEmpty()
         val hint = topicHint?.trim().orEmpty().ifBlank { if (videoUri == null && reuse.isBlank()) manualTopic?.trim().orEmpty() else "" }
 
@@ -130,6 +132,7 @@ object ShortsMetadataGenerator {
             topicOut.text?.lineSequence()?.firstOrNull { it.isNotBlank() }?.trim()?.take(80)?.let { if (it.isNotBlank()) seed = it }
         }
 
+        ChannelMemory.recordSearch(seed, "seo")
         // ---- Step 4: real keyword research on that topic ----
         onStatusChange("researching_keywords")
         val youtubeApiKey = store.youtubeApiKey
@@ -447,6 +450,14 @@ object ShortsMetadataGenerator {
                 "whichever language is being used, don't just paste it awkwardly."
         } else ""
 
+        // What this channel's own history has taught (best/weak titles, the creator's corrections, topics researched).
+        val memoryBlock = ChannelMemory.playbook().let { notes ->
+            if (notes.isBlank()) ""
+            else ("CHANNEL MEMORY (learned from this channel's own history — follow its style where it fits THIS video; " +
+                "it never overrides what the video actually says):\n" + notes)
+                .lines().joinToString("\n") { "            $it" }
+        }
+
         val hintBlock = if (hint.isNotBlank()) {
             "CREATOR'S TOPIC HINT (authoritative — this is what the video is really about; it overrides anything " +
                 "the transcript or the keyword list suggests): \"$hint\". If this hint already reads like a title, " +
@@ -480,6 +491,8 @@ object ShortsMetadataGenerator {
             $mediaBlock
             $keywordsBlock
             $competitorBlock
+
+            $memoryBlock
 
             UNDERSTAND BEFORE WRITING: work out what the video actually says and its STANCE (for, against, how-to,
             story, news, advice...). Everything you write must match that stance and angle. Example: a video that

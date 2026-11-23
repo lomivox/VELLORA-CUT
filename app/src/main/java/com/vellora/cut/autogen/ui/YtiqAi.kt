@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.vellora.cut.autogen.data.SecureCredentialStore
+import com.vellora.cut.autogen.memory.ChannelMemory
 import com.vellora.cut.autogen.network.CloudflareAiClient
 import com.vellora.cut.autogen.network.GeminiClient
 import com.vellora.cut.autogen.network.YtChannel
@@ -30,7 +31,11 @@ sealed class YtiqAiResult {
 object YtiqAi {
     private val client = CloudflareAiClient()
 
-    suspend fun text(context: Context, prompt: String): YtiqAiResult = withContext(Dispatchers.IO) {
+    suspend fun text(context: Context, rawPrompt: String): YtiqAiResult = withContext(Dispatchers.IO) {
+        ChannelMemory.init(context)
+        val notes = ChannelMemory.playbook()
+        val prompt = if (notes.isBlank()) rawPrompt
+        else "CHANNEL MEMORY (learned from this creator's own history — use it where it fits):\n$notes\n\n" + rawPrompt
         val store = try {
             SecureCredentialStore(context.applicationContext)
         } catch (e: Exception) {

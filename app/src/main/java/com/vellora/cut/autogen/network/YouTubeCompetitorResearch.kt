@@ -2,6 +2,8 @@ package com.vellora.cut.autogen.network
 
 import com.vellora.cut.BuildConfig
 import com.vellora.cut.autogen.data.SecureCredentialStore
+import com.vellora.cut.autogen.memory.ChannelMemory
+import com.vellora.cut.autogen.memory.SearchCache
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -44,6 +46,7 @@ object YouTubeCompetitorResearch {
         relevanceLanguage: String? = null
     ): Result? {
         if (apiKey.isBlank() || seed.isBlank()) return null
+        ChannelMemory.recordSearch(seed, "keywords")
         return try {
             val videoIds = searchTopVideos(seed, apiKey, maxVideos, regionCode, relevanceLanguage)
             if (videoIds.isEmpty()) return null
@@ -77,10 +80,15 @@ object YouTubeCompetitorResearch {
             (if (!regionCode.isNullOrBlank()) "&regionCode=$regionCode" else "") +
             (if (!relevanceLanguage.isNullOrBlank()) "&relevanceLanguage=$relevanceLanguage" else "")
         val request = ytRequest("search", query, apiKey)
-
-        client.newCall(request).execute().use { response ->
-            val body = response.body?.string() ?: return emptyList()
+        // The same search within 12 hours is answered from the phone (saves YouTube quota).
+        val cacheKey = "cr-search|$query"
+        val body = SearchCache.get(cacheKey, 12 * 3600_000L) ?: client.newCall(request).execute().use { response ->
+            val text = response.body?.string() ?: return emptyList()
             if (!response.isSuccessful) return emptyList()
+            SearchCache.put(cacheKey, text)
+            text
+        }
+        run {
             val json = JSONObject(body)
             val items = json.optJSONArray("items") ?: return emptyList()
             return (0 until items.length()).mapNotNull { i ->
@@ -92,10 +100,14 @@ object YouTubeCompetitorResearch {
     private fun fetchTagsAndTitles(videoIds: List<String>, apiKey: String): Result {
         val idsParam = videoIds.joinToString(",")
         val request = ytRequest("videos", "part=snippet&id=$idsParam", apiKey)
-
-        client.newCall(request).execute().use { response ->
-            val body = response.body?.string() ?: return Result(emptyList(), emptyList())
+        val cacheKey = "cr-videos|$idsParam"
+        val body = SearchCache.get(cacheKey, 24 * 3600_000L) ?: client.newCall(request).execute().use { response ->
+            val text = response.body?.string() ?: return Result(emptyList(), emptyList())
             if (!response.isSuccessful) return Result(emptyList(), emptyList())
+            SearchCache.put(cacheKey, text)
+            text
+        }
+        run {
             val json = JSONObject(body)
             val items = json.optJSONArray("items") ?: return Result(emptyList(), emptyList())
 

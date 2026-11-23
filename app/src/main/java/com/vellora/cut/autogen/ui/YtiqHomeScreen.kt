@@ -80,6 +80,7 @@ enum class YtiqScreen(val label: String, val icon: String) {
     Learn("Learn", "🎓"),
     Create("Create", "✨"),
     Generate("Generate", "🪄"),
+    Memory("Memory", "🧠"),
     Settings("Settings", "⚙️")
 }
 
@@ -143,6 +144,10 @@ fun YtiqHomeScreen() {
     }
 
     // Back: close the side menu first, then go back to Home, and on Home close the app (2nd press).
+    LaunchedEffect(Unit) {
+        com.vellora.cut.autogen.memory.ChannelMemory.init(context)
+        com.vellora.cut.autogen.work.OutcomeWorker.schedule(context)
+    }
     BackHandler(enabled = drawerState.isOpen) { scope.launch { drawerState.close() } }
     BackHandler(enabled = screen != YtiqScreen.Home && !drawerState.isOpen) { screen = YtiqScreen.Home }
     ExitOnDoubleBack(enabled = screen == YtiqScreen.Home && !drawerState.isOpen)
@@ -199,6 +204,7 @@ fun YtiqHomeScreen() {
                         YtiqDrawerItem("🏠", "Home", screen == YtiqScreen.Home) { go(YtiqScreen.Home) }
                         YtiqDrawerItem("📈", "Optimize", screen == YtiqScreen.Optimize) { go(YtiqScreen.Optimize) }
                         YtiqDrawerItem("💬", "AI Coach", screen == YtiqScreen.Coach) { go(YtiqScreen.Coach) }
+                        YtiqDrawerItem("🧠", "Memory", screen == YtiqScreen.Memory) { go(YtiqScreen.Memory) }
                         YtiqDrawerItem("✏️", "New Chat", false) {
                             coach.reset()
                             go(YtiqScreen.Coach)
@@ -409,6 +415,7 @@ fun YtiqHomeScreen() {
                     YtiqScreen.Create -> Box(modifier = Modifier.fillMaxSize()) {
                         ShortsMetadataScreen(onBack = { screen = YtiqScreen.Home })
                     }
+                    YtiqScreen.Memory -> YtiqMemoryScreen()
                     YtiqScreen.Settings -> Box(modifier = Modifier.fillMaxSize()) {
                         SettingsScreen(onBack = { screen = YtiqScreen.Home })
                     }

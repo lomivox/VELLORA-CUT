@@ -78,18 +78,18 @@ enum class YtiqScreen(val label: String, val icon: String) {
     Competitors("Competitors", "👁️"),
     Subscribers("Subscribers", "👥"),
     Learn("Learn", "🎓"),
-    Create("Create", "✨"),
+    Create("Upload", "⬆️"),
     Generate("Generate", "🪄"),
     Memory("Memory", "🧠"),
     Settings("Settings", "⚙️")
 }
 
 private val YtiqBottomTabs = listOf(
-    YtiqScreen.Home, YtiqScreen.Optimize, YtiqScreen.Research, YtiqScreen.Videos, YtiqScreen.Thumbnails
+    YtiqScreen.Home, YtiqScreen.Optimize, YtiqScreen.Research, YtiqScreen.Thumbnails, YtiqScreen.Create
 )
 
 /**
- * Start screen of the YTIQ app: bottom bar (Home, Optimize, Research, My Videos, Thumbnails) plus a side menu
+ * Start screen of the YTIQ app: bottom bar (Home, Optimize, Research, Thumbnails, Upload) plus a side menu
  * with the other tools. Everything shows the real channel (YouTube login) and real AI (Cloudflare accounts from Settings).
  */
 @OptIn(ExperimentalMaterial3Api::class)

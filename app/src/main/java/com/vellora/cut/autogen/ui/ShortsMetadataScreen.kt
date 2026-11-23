@@ -53,7 +53,7 @@ fun ShortsMetadataScreen(onBack: () -> Unit) {
     val projects by dao.observeAll().collectAsState(initial = emptyList())
 
     var activeProject by remember { mutableStateOf<ShortMetadataEntity?>(null) }
-    var outputLanguage by remember { mutableStateOf("Urdu") } // "Urdu", "English" or "Roman Urdu"
+    var outputLanguage by remember { mutableStateOf(YtiqPrefs.language(context)) } // "Urdu", "English" or "Roman Urdu"
     var isWorking by remember { mutableStateOf(false) }
     var statusText by remember { mutableStateOf("") }
     // Which engine wrote the last result (Gemini or the Cloudflare backup, and why Gemini was skipped).

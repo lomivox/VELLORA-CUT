@@ -28,6 +28,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -36,6 +37,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
@@ -104,6 +106,7 @@ fun YtiqHomeScreen() {
     var accounts by remember { mutableStateOf(YouTubeAccounts.list(context)) }
     var email by remember { mutableStateOf(YouTubeAccounts.selectedEmail(context)) }
     var showSheet by remember { mutableStateOf(false) }
+    var sheetDialog by remember { mutableStateOf<String?>(null) } // "language", "plans", "help" or "logout"
     var channelMenuOpen by remember { mutableStateOf(false) }
     var toolsOpen by remember { mutableStateOf(true) }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -436,21 +439,98 @@ fun YtiqHomeScreen() {
 
     if (showSheet) {
         ModalBottomSheet(onDismissRequest = { showSheet = false }, containerColor = YtCard) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
-                YtiqDrawerItem("⚙️", "Account Settings", false) {
-                    showSheet = false
-                    go(YtiqScreen.Settings)
+            Column(
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 24.dp)
+            ) {
+                YtiqDrawerItem("⚙️", "Account Settings", false) { showSheet = false; go(YtiqScreen.Settings) }
+                YtiqDrawerItem("🌐", "Language", false) { sheetDialog = "language" }
+                YtiqDrawerItem("💳", "Plans", false) { sheetDialog = "plans" }
+                YtiqDrawerItem("❓", "Help", false) { sheetDialog = "help" }
+                YtiqDrawerItem("🔄", "Check for Updates", false) { showSheet = false; go(YtiqScreen.Settings) }
+                YtiqDrawerItem("🔒", "Privacy policy", false) { openPage(context, "https://ytiq.pages.dev/privacy") }
+                YtiqDrawerItem("📄", "Terms of service", false) { openPage(context, "https://ytiq.pages.dev/terms") }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        YtiqDrawerItem("↪️", "Logout", false) { sheetDialog = "logout" }
+                    }
+                    Text(text = BuildConfig.VERSION_NAME, color = YtMuted, fontSize = 13.sp, modifier = Modifier.padding(end = 14.dp))
                 }
-                YtiqDrawerItem("🔄", "Update App", false) {
-                    showSheet = false
-                    go(YtiqScreen.Settings)
-                }
-                Text(
-                    text = "Version ${BuildConfig.VERSION_NAME}",
-                    color = YtMuted, fontSize = 13.sp,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
-                )
             }
+        }
+    }
+
+    sheetDialog?.let { which ->
+        val close = { sheetDialog = null }
+        when (which) {
+            "language" -> AlertDialog(
+                onDismissRequest = close,
+                containerColor = YtCard,
+                title = { Text(text = "Language", color = YtText) },
+                text = {
+                    Column {
+                        Text(text = "Used for titles, descriptions, tags and Coach answers.", color = YtMuted, fontSize = 12.sp)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        listOf("English", "Urdu", "Roman Urdu").forEach { l ->
+                            YtiqDrawerItem(if (YtiqPrefs.language(context) == l) "✓" else "○", l, false) {
+                                YtiqPrefs.setLanguage(context, l)
+                                close()
+                            }
+                        }
+                    }
+                },
+                confirmButton = { TextButton(onClick = close) { Text(text = "Close", color = YtText) } }
+            )
+            "plans" -> AlertDialog(
+                onDismissRequest = close,
+                containerColor = YtCard,
+                title = { Text(text = "Plans", color = YtText) },
+                text = {
+                    Text(
+                        text = "YTIQ is free — no subscription.\n\nLimits come from YouTube's daily quota (shared by all searches and uploads) and from your AI quota.",
+                        color = YtMuted, fontSize = 14.sp
+                    )
+                },
+                confirmButton = { TextButton(onClick = close) { Text(text = "OK", color = YtText) } }
+            )
+            "help" -> AlertDialog(
+                onDismissRequest = close,
+                containerColor = YtCard,
+                title = { Text(text = "Help", color = YtText) },
+                text = {
+                    Text(
+                        text = "• Connect a channel: Account Settings → Choose and connect a channel.\n" +
+                            "• Quota error: YouTube's daily quota resets about 12–1 PM Pakistan time.\n" +
+                            "• Uploads keep running if you close the app.\n" +
+                            "• AI not answering: check the Gemini key in Account Settings; the backup starts automatically.",
+                        color = YtMuted, fontSize = 14.sp
+                    )
+                },
+                confirmButton = { TextButton(onClick = close) { Text(text = "OK", color = YtText) } }
+            )
+            "logout" -> AlertDialog(
+                onDismissRequest = close,
+                containerColor = YtCard,
+                title = { Text(text = "Log out of ${channelName ?: "this channel"}?", color = YtText) },
+                text = { Text(text = "The channel is disconnected from this app. You can connect it again any time.", color = YtMuted, fontSize = 14.sp) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val current = email
+                        if (current != null) {
+                            YouTubeAccounts.remove(context, current)
+                            accounts = YouTubeAccounts.list(context)
+                            email = YouTubeAccounts.selectedEmail(context)
+                        }
+                        sheetDialog = null
+                        showSheet = false
+                        screen = YtiqScreen.Home
+                    }) { Text(text = "Log out", color = Color(0xFFFF6B6B)) }
+                },
+                dismissButton = { TextButton(onClick = close) { Text(text = "Cancel", color = YtText) } }
+            )
+            else -> close()
         }
     }
 }
@@ -500,5 +580,14 @@ private fun YtiqNavBar(selected: YtiqScreen, onSelect: (YtiqScreen) -> Unit) {
                 }
             }
         }
+    }
+}
+
+/** Opens a web page in the browser. */
+private fun openPage(context: android.content.Context, url: String) {
+    try {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    } catch (e: Exception) {
+        // no browser installed — nothing to do
     }
 }

@@ -748,7 +748,7 @@ fun YtiqAiToolScreen(dash: YtiqDashboard, intro: String, actions: List<YtiqAiAct
             busy = true
             shown = a.label
             output = ""
-            output = when (val r = YtiqAi.text(context, ytiqToolPrompt(a.task, dash.channel, dash.videos))) {
+            output = when (val r = YtiqAi.text(context, ytiqToolPrompt(a.task, dash.channel, dash.videos), useLanguage = true)) {
                 is YtiqAiResult.Ok -> r.text
                 is YtiqAiResult.Fail -> "Problem: " + r.message
             }

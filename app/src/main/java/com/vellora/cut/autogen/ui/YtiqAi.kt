@@ -31,11 +31,18 @@ sealed class YtiqAiResult {
 object YtiqAi {
     private val client = CloudflareAiClient()
 
-    suspend fun text(context: Context, rawPrompt: String): YtiqAiResult = withContext(Dispatchers.IO) {
+    suspend fun text(context: Context, rawPrompt: String, useLanguage: Boolean = false): YtiqAiResult = withContext(Dispatchers.IO) {
         ChannelMemory.init(context)
         val notes = ChannelMemory.playbook()
-        val prompt = if (notes.isBlank()) rawPrompt
+        val withMemory = if (notes.isBlank()) rawPrompt
         else "CHANNEL MEMORY (learned from this creator's own history — use it where it fits):\n$notes\n\n" + rawPrompt
+        // Coach and the AI tools follow the language chosen in the account menu.
+        val language = if (useLanguage) YtiqPrefs.language(context) else "English"
+        val prompt = when (language) {
+            "Urdu" -> withMemory + "\n\nIMPORTANT: write your whole reply in natural Urdu (Urdu script). This overrides any earlier instruction about the reply language."
+            "Roman Urdu" -> withMemory + "\n\nIMPORTANT: write your whole reply in Roman Urdu (Urdu written with English letters). This overrides any earlier instruction about the reply language."
+            else -> withMemory
+        }
         val store = try {
             SecureCredentialStore(context.applicationContext)
         } catch (e: Exception) {
@@ -179,7 +186,7 @@ class YtiqCoachState {
                 ytiqChannelContext(dash.channel, dash.videos) +
                 com.vellora.cut.autogen.network.NicheInsights.coachBlock(context) +
                 "\nPichli baat-cheet:\n" + history + "\n\nUser: " + q + "\nCoach:"
-            when (val r = YtiqAi.text(context, prompt)) {
+            when (val r = YtiqAi.text(context, prompt, useLanguage = true)) {
                 is YtiqAiResult.Ok -> msgs.add(YtiqCoachMsg(false, r.text))
                 is YtiqAiResult.Fail -> msgs.add(YtiqCoachMsg(false, "Problem: " + r.message))
             }
